@@ -5,11 +5,40 @@ class Employee(models.Model):
     emp_id = models.CharField(max_length=20, unique=True)
     full_name = models.CharField(max_length=150)
     email = models.EmailField(unique=True)
+    password = models.CharField(max_length=256, null=True, blank=True)
     designation = models.CharField(max_length=100)
     joining_date = models.DateField(auto_now_add=True)
     face_encoding = models.JSONField(help_text="128-dimensional face embedding vector or pixel signature", null=True, blank=True)
     profile_photo = models.ImageField(upload_to="employees/photos/", null=True, blank=True)
     is_active = models.BooleanField(default=True)
+
+    def set_password(self, raw_password):
+        from django.contrib.auth.hashers import make_password
+        if raw_password:
+            self.password = make_password(raw_password)
+
+    def check_password(self, raw_password):
+        from django.contrib.auth.hashers import check_password
+        if not raw_password:
+            return False
+        
+        # If user account was created before password was required (password is None or empty)
+        if not self.password:
+            self.set_password(raw_password)
+            self.save(update_fields=['password'])
+            return True
+
+        # Check standard Django hashed password
+        if self.password.startswith(('pbkdf2_sha256$', 'pbkdf2_', 'argon2', 'bcrypt')):
+            return check_password(raw_password, self.password)
+
+        # Fallback for plain-text password from legacy registration: migrate to hash
+        if self.password == raw_password:
+            self.set_password(raw_password)
+            self.save(update_fields=['password'])
+            return True
+
+        return False
 
     def __str__(self):
         return f"{self.emp_id} - {self.full_name}"

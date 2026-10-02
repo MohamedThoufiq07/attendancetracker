@@ -1,4 +1,5 @@
 import numpy as np
+from datetime import time
 from PIL import Image
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -30,7 +31,7 @@ class VerifyFaceView(APIView):
                 return Response({"valid": False, "error": msg}, status=status.HTTP_400_BAD_REQUEST)
             return Response({"valid": True, "message": msg}, status=status.HTTP_200_OK)
         except Exception as e:
-            return Response({"valid": False, "error": f"Failed to analyze face image: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"valid": False, "error": "Unable to analyze photo. Please upload a clear front-facing portrait photo."}, status=status.HTTP_400_BAD_REQUEST)
 
 class GeofenceConfigView(APIView):
     def get(self, request):
@@ -46,12 +47,17 @@ class EmployeeRegisterView(APIView):
     def post(self, request):
         full_name = request.data.get('full_name', '').strip()
         email = request.data.get('email', '').strip()
+        password = request.data.get('password', '').strip()
         emp_id = request.data.get('emp_id', '').strip()
         designation = request.data.get('designation', 'Software Engineer')
         image_file = request.FILES.get('face_image')
 
-        if not full_name or not email or not image_file:
-            return Response({"error": "Please provide Full Name, Gmail/Email, and a clear face photo."}, status=status.HTTP_400_BAD_REQUEST)
+        if not full_name or not email or not password or not image_file:
+            return Response({"error": "Please provide Full Name, Email, Password, and a clear face photo."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if email is already registered
+        if Employee.objects.filter(email__iexact=email).exists():
+            return Response({"error": f"An account with email '{email}' is already registered. Please login."}, status=status.HTTP_400_BAD_REQUEST)
 
         # Auto-generate Employee ID from Full Name if not provided
         if not emp_id:
@@ -69,24 +75,25 @@ class EmployeeRegisterView(APIView):
         except Exception as e:
             return Response({"error": f"Failed to process face image: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
-        employee, created = Employee.objects.update_or_create(
+        employee = Employee.objects.create(
             emp_id=emp_id,
-            defaults={
-                'full_name': full_name,
-                'email': email,
-                'designation': designation,
-                'face_encoding': encoding,
-                'profile_photo': image_file,
-                'is_active': True
-            }
+            full_name=full_name,
+            email=email,
+            designation=designation,
+            face_encoding=encoding,
+            profile_photo=image_file,
+            is_active=True
         )
+        if password:
+            employee.set_password(password)
+            employee.save()
 
         return Response({
             "message": f"Employee {full_name} registered successfully!",
             "emp_id": emp_id,
             "full_name": full_name,
             "email": email,
-            "created": created
+            "created": True
         }, status=status.HTTP_201_CREATED)
 
 class EmployeeLoginView(APIView):
@@ -95,14 +102,22 @@ class EmployeeLoginView(APIView):
         password = request.data.get('password', '').strip()
 
         if not identifier:
-            return Response({"error": "Please enter your Gmail / Email or Employee ID."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Please enter your Email or Employee ID."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not password:
+            return Response({"error": "Please enter your password."}, status=status.HTTP_400_BAD_REQUEST)
 
         employee = Employee.objects.filter(email__iexact=identifier, is_active=True).first()
         if not employee:
             employee = Employee.objects.filter(emp_id__iexact=identifier, is_active=True).first()
+        if not employee:
+            employee = Employee.objects.filter(email__icontains=identifier, is_active=True).first()
 
         if not employee:
-            return Response({"error": "No account found matching this Gmail/Email or Employee ID."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "Invalid Email / Employee ID or Password."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        if not employee.check_password(password):
+            return Response({"error": "Invalid Email / Employee ID or Password. Please check your credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
         return Response({
             "message": "Login successful",
@@ -147,9 +162,21 @@ class MarkAttendanceView(APIView):
         if not captured_encoding or not employee.face_encoding:
             return Response({"error": "No face recognized in snapshot or missing registered face profile"}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
-        is_match = compare_face_vectors(employee.face_encoding, captured_encoding, tolerance=0.50)
+        is_match = compare_face_vectors(employee.face_encoding, captured_encoding)
+        if not is_match and employee.profile_photo:
+            try:
+                prof_img = Image.open(employee.profile_photo.path).convert('RGB')
+                prof_np = np.array(prof_img)
+                fresh_encoding = compute_face_encoding(prof_np)
+                if fresh_encoding:
+                    employee.face_encoding = fresh_encoding
+                    employee.save()
+                    is_match = compare_face_vectors(fresh_encoding, captured_encoding)
+            except Exception:
+                pass
+
         if not is_match:
-            return Response({"error": "Face verification mismatch! Please capture clearly."}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({"error": "Face verification mismatch! Captured face does not match the registered employee photo."}, status=status.HTTP_401_UNAUTHORIZED)
 
         # 5. Timestamp & Late Calculation
         now = timezone.localtime(timezone.now())
@@ -158,20 +185,23 @@ class MarkAttendanceView(APIView):
         attendance_status = evaluate_attendance_status(current_time)
 
         # 6. Record or Update DB
-        attendance, created = Attendance.objects.get_or_create(
-            employee=employee,
-            date=today,
-            defaults={
-                'check_in': current_time,
-                'status': attendance_status,
-                'punch_latitude': user_lat,
-                'punch_longitude': user_lng,
-                'distance_meters': dist,
-                'verification_photo': image_file
-            }
-        )
+        attendance = Attendance.objects.filter(employee=employee, date=today).first()
 
-        if not created:
+        if attendance:
+            # User already checked in today!
+            if attendance.check_out:
+                return Response({
+                    "error": f"You have already completed both Check-In ({attendance.check_in.strftime('%I:%M %p')}) and Check-Out ({attendance.check_out.strftime('%I:%M %p')}) for today!"
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Check-Out is ONLY permitted after 5:30 PM (17:30)
+            checkout_start_time = time(17, 30, 0)
+            if current_time < checkout_start_time:
+                return Response({
+                    "error": f"Attendance Check-In already recorded for today at {attendance.check_in.strftime('%I:%M %p')}. Check-Out punch will only be available after 5:30 PM."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Record Check-Out after 5:30 PM
             attendance.check_out = current_time
             attendance.save()
             return Response({
@@ -183,6 +213,18 @@ class MarkAttendanceView(APIView):
                 "status": attendance.status,
                 "distance": f"{round(dist, 1)}m"
             }, status=status.HTTP_200_OK)
+
+        # First punch of the day: Check-In
+        attendance = Attendance.objects.create(
+            employee=employee,
+            date=today,
+            check_in=current_time,
+            status=attendance_status,
+            punch_latitude=user_lat,
+            punch_longitude=user_lng,
+            distance_meters=dist,
+            verification_photo=image_file
+        )
 
         return Response({
             "message": f"Check-In recorded: {attendance_status}",
@@ -214,3 +256,38 @@ class AttendanceHistoryView(APIView):
                 "distance": f"{round(att.distance_meters, 1)}m"
             })
         return Response(data, status=status.HTTP_200_OK)
+
+class UpdateProfileView(APIView):
+    def post(self, request):
+        emp_id = request.data.get('emp_id', '').strip()
+        full_name = request.data.get('full_name', '').strip()
+        email = request.data.get('email', '').strip()
+        new_password = request.data.get('new_password', '').strip()
+
+        if not emp_id:
+            return Response({"error": "Employee ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            employee = Employee.objects.get(emp_id=emp_id, is_active=True)
+        except Employee.DoesNotExist:
+            return Response({"error": "Employee profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if email and email.lower() != employee.email.lower():
+            if Employee.objects.filter(email__iexact=email).exclude(emp_id=emp_id).exists():
+                return Response({"error": f"Email '{email}' is already taken by another account."}, status=status.HTTP_400_BAD_REQUEST)
+            employee.email = email
+
+        if full_name:
+            employee.full_name = full_name
+
+        if new_password:
+            employee.set_password(new_password)
+
+        employee.save()
+
+        return Response({
+            "message": "Profile updated successfully!",
+            "emp_id": employee.emp_id,
+            "full_name": employee.full_name,
+            "email": employee.email
+        }, status=status.HTTP_200_OK)
