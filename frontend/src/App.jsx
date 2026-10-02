@@ -83,6 +83,8 @@ export default function AttendanceCheckIn() {
   const [regData, setRegData] = useState({ full_name: '', email: '', password: '', confirm_password: '', designation: '' });
   const [regPhoto, setRegPhoto] = useState(null);
   const [regPhotoPreview, setRegPhotoPreview] = useState(null);
+  const [faceValidating, setFaceValidating] = useState(false);
+  const [faceValidError, setFaceValidError] = useState(null);
 
   // History state
   const [historyList, setHistoryList] = useState([]);
@@ -185,19 +187,52 @@ export default function AttendanceCheckIn() {
     });
   };
 
+  const verifyAndSetPhoto = async (fileOrBlob) => {
+    setFaceValidating(true);
+    setFaceValidError(null);
+    setErrorBanner(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('face_image', fileOrBlob, 'face_check.jpg');
+
+      const res = await fetch(`${API_BASE_URL}/api/attendance/verify-face/`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.valid) {
+        const msg = data.error || "No human face detected. Only photos showing a human face are accepted.";
+        setRegPhoto(null);
+        setRegPhotoPreview(null);
+        setFaceValidError(msg);
+        return;
+      }
+
+      setRegPhoto(fileOrBlob);
+      setRegPhotoPreview(URL.createObjectURL(fileOrBlob));
+      setFaceValidError(null);
+    } catch (err) {
+      setRegPhoto(null);
+      setRegPhotoPreview(null);
+      setFaceValidError('Face validation error: ' + err.message);
+    } finally {
+      setFaceValidating(false);
+    }
+  };
+
   const handlePhotoSelect = (e) => {
     const file = e.target.files[0];
     if (file) {
-      setRegPhoto(file);
-      setRegPhotoPreview(URL.createObjectURL(file));
+      verifyAndSetPhoto(file);
     }
   };
 
   const handleCaptureRegPhoto = async () => {
     const blob = await captureSnapshot();
     if (blob) {
-      setRegPhoto(blob);
-      setRegPhotoPreview(URL.createObjectURL(blob));
+      verifyAndSetPhoto(blob);
     } else {
       alert("Unable to capture snapshot. Please allow camera permissions or upload an image file.");
     }
@@ -990,14 +1025,33 @@ export default function AttendanceCheckIn() {
                   Only photos showing a clear single person front face will be accepted.
                 </p>
 
-                {regPhotoPreview && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                {faceValidating && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: '10px', backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', fontSize: '13px', fontWeight: '700' }}>
+                    <RefreshCw style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
+                    Analyzing image biometrics for human face...
+                  </div>
+                )}
+
+                {faceValidError && (
+                  <div style={{ padding: '12px 14px', borderRadius: '10px', backgroundColor: '#FEF2F2', border: '1px solid #FCA5A5', color: '#B91C1C', fontSize: '13px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <AlertTriangle style={{ width: '18px', height: '18px', color: '#EF4444', flexShrink: 0 }} />
+                    {faceValidError}
+                  </div>
+                )}
+
+                {regPhotoPreview && !faceValidating && !faceValidError && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '10px', backgroundColor: '#ECFDF5', borderRadius: '12px', border: '1px solid #A7F3D0' }}>
                     <img 
                       src={regPhotoPreview} 
                       alt="Registered face preview" 
-                      style={{ width: '70px', height: '70px', borderRadius: '12px', objectFit: 'cover', border: '2px solid #4f46e5' }} 
+                      style={{ width: '64px', height: '64px', borderRadius: '10px', objectFit: 'cover', border: '2px solid #10b981' }} 
                     />
-                    <span style={{ fontSize: '12px', color: '#047857', fontWeight: '700' }}>✓ Front face photo attached</span>
+                    <div>
+                      <span style={{ fontSize: '13px', color: '#047857', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <CheckCircle2 style={{ width: '16px', height: '16px', color: '#10b981' }} /> Human Front Face Verified!
+                      </span>
+                      <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#065F46' }}>Photo ready for registration & biometric matching.</p>
+                    </div>
                   </div>
                 )}
 
@@ -1010,18 +1064,19 @@ export default function AttendanceCheckIn() {
                     color: '#334155',
                     fontSize: '12px',
                     fontWeight: '700',
-                    cursor: 'pointer',
+                    cursor: faceValidating ? 'not-allowed' : 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px'
                   }}>
                     <Upload style={{ width: '15px', height: '15px' }} /> Upload Face Image
-                    <input type="file" accept="image/*" onChange={handlePhotoSelect} style={{ display: 'none' }} />
+                    <input type="file" accept="image/*" onChange={handlePhotoSelect} disabled={faceValidating} style={{ display: 'none' }} />
                   </label>
 
                   <button
                     type="button"
                     onClick={handleCaptureRegPhoto}
+                    disabled={faceValidating}
                     style={{
                       padding: '10px 16px',
                       borderRadius: '10px',
@@ -1030,7 +1085,7 @@ export default function AttendanceCheckIn() {
                       color: '#4f46e5',
                       fontSize: '12px',
                       fontWeight: '700',
-                      cursor: 'pointer',
+                      cursor: faceValidating ? 'not-allowed' : 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '6px'
@@ -1041,8 +1096,8 @@ export default function AttendanceCheckIn() {
                 </div>
               </div>
 
-              <button type="submit" disabled={isProcessing} style={{ padding: '14px 0', borderRadius: '12px', backgroundColor: '#4f46e5', color: '#ffffff', fontWeight: '800', fontSize: '14px', border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(79, 70, 229, 0.25)' }}>
-                {isProcessing ? 'Verifying Face & Registering...' : 'Complete Registration'}
+              <button type="submit" disabled={isProcessing || faceValidating || !regPhoto} style={{ padding: '14px 0', borderRadius: '12px', backgroundColor: !regPhoto || faceValidating ? '#cbd5e1' : '#4f46e5', color: !regPhoto || faceValidating ? '#64748b' : '#ffffff', fontWeight: '800', fontSize: '14px', border: 'none', cursor: !regPhoto || faceValidating ? 'not-allowed' : 'pointer', boxShadow: regPhoto ? '0 4px 12px rgba(79, 70, 229, 0.25)' : 'none' }}>
+                {faceValidating ? 'Analyzing Face Biometrics...' : isProcessing ? 'Registering...' : 'Complete Registration'}
               </button>
             </form>
           )}

@@ -9,11 +9,28 @@ from .services import (
     haversine_distance, 
     evaluate_attendance_status, 
     compute_face_encoding, 
+    validate_human_face,
     compare_face_vectors,
     ZIGMA_OFFICE_LAT, 
     ZIGMA_OFFICE_LNG, 
     ALLOWED_RADIUS_METERS
 )
+
+class VerifyFaceView(APIView):
+    def post(self, request):
+        image_file = request.FILES.get('face_image')
+        if not image_file:
+            return Response({"valid": False, "error": "No image file provided."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            pil_image = Image.open(image_file).convert('RGB')
+            image_np = np.array(pil_image)
+            is_valid, msg = validate_human_face(image_np)
+            if not is_valid:
+                return Response({"valid": False, "error": msg}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"valid": True, "message": msg}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"valid": False, "error": f"Failed to analyze face image: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
 class GeofenceConfigView(APIView):
     def get(self, request):
