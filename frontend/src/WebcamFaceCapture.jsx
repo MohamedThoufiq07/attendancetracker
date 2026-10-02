@@ -200,8 +200,9 @@ export default function WebcamFaceCapture({
             {/* Center Visual Guide Overlay */}
             <div style={{
               position: 'absolute',
-              width: '180px',
-              height: '220px',
+              width: '50%',
+              maxHeight: '75%',
+              aspectRatio: '3 / 4',
               borderRadius: '28px',
               pointerEvents: 'none',
               transition: 'all 0.3s ease',

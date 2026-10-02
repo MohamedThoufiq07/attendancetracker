@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import MarkAttendanceView, EmployeeRegisterView, AttendanceHistoryView, GeofenceConfigView, EmployeeLoginView, VerifyFaceView, UpdateProfileView
+from .payroll_sync import MonthlySummaryView, SyncToPayslipProView
 
 urlpatterns = [
     path('config/', GeofenceConfigView.as_view(), name='geofence-config'),
@@ -9,4 +10,6 @@ urlpatterns = [
     path('update-profile/', UpdateProfileView.as_view(), name='update-profile'),
     path('mark-attendance/', MarkAttendanceView.as_view(), name='mark-attendance'),
     path('history/', AttendanceHistoryView.as_view(), name='attendance-history'),
+    path('monthly-summary/', MonthlySummaryView.as_view(), name='monthly-summary'),
+    path('sync-to-payslippro/', SyncToPayslipProView.as_view(), name='sync-to-payslippro'),
 ]
