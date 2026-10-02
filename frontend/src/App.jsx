@@ -26,6 +26,9 @@ import {
   Sparkle
 } from 'lucide-react';
 
+// DYNAMIC BACKEND API BASE URL (Supports Vercel/Netlify Deployment)
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
 // EXACT TESTING LOCATION CONSTANTS (Provided in user screenshot)
 const OFFICE_LAT = 8.692451;
 const OFFICE_LNG = 77.718733;
@@ -232,7 +235,7 @@ export default function AttendanceCheckIn() {
         formData.append('face_image', blob, 'punch_selfie.jpg');
       }
 
-      const response = await fetch('http://127.0.0.1:8000/api/attendance/mark-attendance/', {
+      const response = await fetch(`${API_BASE_URL}/api/attendance/mark-attendance/`, {
         method: 'POST',
         body: formData,
       });
@@ -280,7 +283,7 @@ export default function AttendanceCheckIn() {
       formData.append('designation', regData.designation || 'Software Engineer');
       formData.append('face_image', regPhoto, 'registered_face.jpg');
 
-      const res = await fetch('http://127.0.0.1:8000/api/attendance/register/', {
+      const res = await fetch(`${API_BASE_URL}/api/attendance/register/`, {
         method: 'POST',
         body: formData
       });
@@ -313,7 +316,7 @@ export default function AttendanceCheckIn() {
     setIsProcessing(true);
 
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/attendance/login/', {
+      const res = await fetch(`${API_BASE_URL}/api/attendance/login/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -358,7 +361,7 @@ export default function AttendanceCheckIn() {
 
   const fetchHistory = async () => {
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/attendance/history/');
+      const res = await fetch(`${API_BASE_URL}/api/attendance/history/`);
       const data = await res.json();
       setHistoryList(data);
     } catch (err) {
