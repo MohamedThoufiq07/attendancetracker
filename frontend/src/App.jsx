@@ -37,7 +37,8 @@ import {
 
 // DYNAMIC BACKEND API BASE URL (Supports Vercel/Netlify Deployment)
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '299933614033-8hirtt0ghcikkk1cuq857v6vigsg3441.apps.googleusercontent.com';
+
 
 
 
