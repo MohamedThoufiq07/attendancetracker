@@ -71,10 +71,12 @@ export default function AttendanceCheckIn() {
   });
   const [authMode, setAuthMode] = useState('app'); // 'app' | 'login'
 
-  const saveUserSession = (userData) => {
+  const saveUserSession = (userData, tokens = {}) => {
     setCurrentUser(userData);
     try {
       localStorage.setItem('attendance_user', JSON.stringify(userData));
+      if (tokens.access_token) localStorage.setItem('access_token', tokens.access_token);
+      if (tokens.refresh_token) localStorage.setItem('refresh_token', tokens.refresh_token);
     } catch (e) {}
   };
 
@@ -82,10 +84,46 @@ export default function AttendanceCheckIn() {
     setCurrentUser(null);
     setHistoryList([]);
     setActiveTab('punch');
+    setAuthMode('login');
     try {
       localStorage.removeItem('attendance_user');
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
     } catch (e) {}
   };
+
+  const refreshAccessToken = async () => {
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (!refreshToken) return null;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/token/refresh/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh: refreshToken })
+      });
+      const data = await res.json();
+      if (res.ok && data.access) {
+        localStorage.setItem('access_token', data.access);
+        if (data.refresh) {
+          localStorage.setItem('refresh_token', data.refresh);
+        }
+        return data.access;
+      }
+    } catch (err) {
+      console.warn("Session refresh warning:", err);
+    }
+
+    // Refresh token expired (30 days) or blacklisted -> redirect to login
+    handleLogout();
+    setNotificationModal({
+      type: 'warning',
+      title: 'Session Expired',
+      message: 'Your 30-day authentication session has expired. Please log in again.'
+    });
+    return null;
+  };
+
   
   // Navigation
   const [activeTab, setActiveTab] = useState('punch'); // 'punch' | 'onboard' | 'history'
@@ -629,7 +667,8 @@ export default function AttendanceCheckIn() {
         name: data.full_name,
         email: data.email,
         role: 'Employee'
-      });
+      }, { access_token: data.access_token, refresh_token: data.refresh_token });
+
 
       setRegData({ full_name: '', email: '', password: '', confirm_password: '', designation: '', joining_date: '', phone_number: '' });
       setRegPhoto(null);
@@ -690,7 +729,8 @@ export default function AttendanceCheckIn() {
         name: data.full_name,
         email: data.email,
         role: 'Employee'
-      });
+      }, { access_token: data.access_token, refresh_token: data.refresh_token });
+
       setAuthMode('app');
       
       setNotificationModal({
@@ -781,7 +821,8 @@ export default function AttendanceCheckIn() {
           name: data.full_name,
           email: data.email,
           role: 'Employee'
-        });
+        }, { access_token: data.access_token, refresh_token: data.refresh_token });
+
         setGoogleModalOpen(false);
         setAuthMode('app');
         setNotificationModal({

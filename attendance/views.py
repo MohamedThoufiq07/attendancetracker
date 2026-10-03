@@ -43,6 +43,15 @@ class GeofenceConfigView(APIView):
             "allowed_radius_meters": ALLOWED_RADIUS_METERS
         })
 
+from rest_framework_simplejwt.tokens import RefreshToken
+
+def get_tokens_for_employee(employee):
+    refresh = RefreshToken.for_user(employee)
+    return {
+        'access_token': str(refresh.access_token),
+        'refresh_token': str(refresh),
+    }
+
 class EmployeeRegisterView(APIView):
     def post(self, request):
         full_name = request.data.get('full_name', '').strip()
@@ -95,11 +104,15 @@ class EmployeeRegisterView(APIView):
             employee.set_password(password)
             employee.save()
 
+        tokens = get_tokens_for_employee(employee)
+
         return Response({
             "message": f"Employee {full_name} registered successfully!",
             "emp_id": emp_id,
             "full_name": full_name,
             "email": email,
+            "access_token": tokens['access_token'],
+            "refresh_token": tokens['refresh_token'],
             "created": True
         }, status=status.HTTP_201_CREATED)
 
@@ -125,17 +138,21 @@ class EmployeeLoginView(APIView):
                 return Response({"error": f"No registered employee account found for '{identifier}'. Please register your employee account first."}, status=status.HTTP_401_UNAUTHORIZED)
             return Response({"error": "Invalid Email / Employee ID or Password."}, status=status.HTTP_401_UNAUTHORIZED)
 
-
         if password != 'google_oauth_bypass' and not employee.check_password(password):
             return Response({"error": "Invalid Email / Employee ID or Password. Please check your credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        tokens = get_tokens_for_employee(employee)
 
         return Response({
             "message": "Login successful",
             "emp_id": employee.emp_id,
             "full_name": employee.full_name,
             "email": employee.email,
-            "designation": employee.designation
+            "designation": employee.designation,
+            "access_token": tokens['access_token'],
+            "refresh_token": tokens['refresh_token']
         }, status=status.HTTP_200_OK)
+
 
 class MarkAttendanceView(APIView):
     def post(self, request):
