@@ -220,7 +220,7 @@ export default function AttendanceCheckIn() {
     return () => clearInterval(timer);
   }, []);
 
-  // Initialize Google Identity Services (GSI) & Render official Google Button
+  // Initialize Google Identity Services (GSI) & Render official Google Button statically
   useEffect(() => {
     const initGoogleGSI = () => {
       if (window.google?.accounts?.id) {
@@ -246,10 +246,9 @@ export default function AttendanceCheckIn() {
             }
           });
 
-          // Render official Google button if target container exists
+          // Render official Google button statically only if container is empty
           const container = document.getElementById('googleSignInBtnDiv');
-          if (container) {
-            container.innerHTML = '';
+          if (container && container.children.length === 0) {
             window.google.accounts.id.renderButton(container, {
               theme: 'outline',
               size: 'large',
@@ -265,9 +264,10 @@ export default function AttendanceCheckIn() {
     };
 
     initGoogleGSI();
-    const interval = setInterval(initGoogleGSI, 1000);
-    return () => clearInterval(interval);
+    const timeout = setTimeout(initGoogleGSI, 500);
+    return () => clearTimeout(timeout);
   }, [authMode]);
+
 
 
 
