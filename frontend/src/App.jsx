@@ -37,6 +37,9 @@ import {
 
 // DYNAMIC BACKEND API BASE URL (Supports Vercel/Netlify Deployment)
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+
+
 
 // EXACT TESTING LOCATION CONSTANTS (Updated from Google Maps screenshot: Kareem Shop area)
 const OFFICE_LAT = 8.6928686;
@@ -133,7 +136,16 @@ export default function AttendanceCheckIn() {
   const [loginForm, setLoginForm] = useState({ identifier: '', password: '' });
 
   // Registration form state (Empty defaults so placeholders show!)
-  const [regData, setRegData] = useState({ full_name: '', email: '', password: '', confirm_password: '', designation: '' });
+  const [regData, setRegData] = useState({
+    full_name: '',
+    email: '',
+    password: '',
+    confirm_password: '',
+    designation: '',
+    joining_date: '',
+    phone_number: ''
+  });
+
   const [regPhoto, setRegPhoto] = useState(null);
   const [regPhotoPreview, setRegPhotoPreview] = useState(null);
   const [faceValidating, setFaceValidating] = useState(false);
@@ -168,6 +180,57 @@ export default function AttendanceCheckIn() {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Initialize Google Identity Services (GSI) & Render official Google Button
+  useEffect(() => {
+    const initGoogleGSI = () => {
+      if (window.google?.accounts?.id) {
+        try {
+          window.google.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID,
+            callback: (response) => {
+              if (response && response.credential) {
+                try {
+                  const base64Url = response.credential.split('.')[1];
+                  const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                  const jsonPayload = decodeURIComponent(
+                    atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
+                  );
+                  const payload = JSON.parse(jsonPayload);
+                  if (payload && payload.email) {
+                    executeGoogleAuth(payload.email);
+                  }
+                } catch (e) {
+                  console.error("Error parsing Google OAuth JWT payload:", e);
+                }
+              }
+            }
+          });
+
+          // Render official Google button if target container exists
+          const container = document.getElementById('googleSignInBtnDiv');
+          if (container) {
+            container.innerHTML = '';
+            window.google.accounts.id.renderButton(container, {
+              theme: 'outline',
+              size: 'large',
+              width: 320,
+              text: 'continue_with',
+              shape: 'rectangular'
+            });
+          }
+        } catch (err) {
+          console.warn("Google Identity Services initialization warning:", err);
+        }
+      }
+    };
+
+    initGoogleGSI();
+    const interval = setInterval(initGoogleGSI, 1000);
+    return () => clearInterval(interval);
+  }, [authMode]);
+
+
 
   // Real-time GPS Geolocation Tracker
   useEffect(() => {
@@ -549,7 +612,9 @@ export default function AttendanceCheckIn() {
       formData.append('full_name', regData.full_name);
       formData.append('email', regData.email);
       formData.append('password', regData.password);
-      formData.append('designation', regData.designation || 'Software Engineer');
+      formData.append('designation', regData.designation || 'Full Stack Developer');
+      if (regData.joining_date) formData.append('joining_date', regData.joining_date);
+      if (regData.phone_number) formData.append('phone_number', regData.phone_number);
       formData.append('face_image', regPhoto, 'registered_face.jpg');
 
       const res = await fetch(`${API_BASE_URL}/api/attendance/register/`, {
@@ -566,7 +631,7 @@ export default function AttendanceCheckIn() {
         role: 'Employee'
       });
 
-      setRegData({ full_name: '', email: '', password: '', confirm_password: '', designation: '' });
+      setRegData({ full_name: '', email: '', password: '', confirm_password: '', designation: '', joining_date: '', phone_number: '' });
       setRegPhoto(null);
       setRegPhotoPreview(null);
       setActiveTab('punch');
@@ -587,7 +652,8 @@ export default function AttendanceCheckIn() {
         role: 'Employee'
       });
 
-      setRegData({ full_name: '', email: '', password: '', confirm_password: '', designation: '' });
+      setRegData({ full_name: '', email: '', password: '', confirm_password: '', designation: '', joining_date: '', phone_number: '' });
+
       setRegPhoto(null);
       setRegPhotoPreview(null);
       setActiveTab('punch');
@@ -686,7 +752,16 @@ export default function AttendanceCheckIn() {
   };
 
   const executeGoogleAuth = async (emailToAuth) => {
-    const email = (emailToAuth || 'mdthoufiq0507@gmail.com').trim().toLowerCase();
+    const email = (emailToAuth || '').trim().toLowerCase();
+    if (!email) {
+      setNotificationModal({
+        type: 'error',
+        title: 'Google Sign-In Error',
+        message: 'No Google email was provided for authentication.'
+      });
+      return;
+    }
+
     setGoogleSigningIn(true);
 
     try {
@@ -714,33 +789,25 @@ export default function AttendanceCheckIn() {
           title: 'Google Sign-In Successful!',
           message: `Authenticated via Google as ${data.email} (${data.full_name})\nEmployee ID: ${data.emp_id}`
         });
-        return;
+      } else {
+        setNotificationModal({
+          type: 'error',
+          title: 'Account Not Registered',
+          message: `No registered employee account found for '${email}'. Please complete your registration first.`
+        });
       }
     } catch (err) {
-      console.warn("Backend login check bypassed for Google Auth:", err);
+      console.error("Google Auth error:", err);
+      setNotificationModal({
+        type: 'error',
+        title: 'Authentication Error',
+        message: `Unable to verify Google login for '${email}'. Please ensure you are registered.`
+      });
+    } finally {
+      setGoogleSigningIn(false);
     }
-
-    // Fallback automatic session for Google user
-    const prefix = email.split('@')[0].replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase() || 'GGL';
-    const empId = `${prefix}_001`;
-    const name = email.split('@')[0].replace(/\d+/g, '').replace(/[^a-zA-Z]/g, ' ').trim();
-    
-    saveUserSession({
-      emp_id: empId,
-      name: name ? name.charAt(0).toUpperCase() + name.slice(1) : 'Mohamed Thoufiq',
-      email: email,
-      role: 'Employee'
-    });
-    
-    setGoogleModalOpen(false);
-    setAuthMode('app');
-    setNotificationModal({
-      type: 'success',
-      title: 'Google Sign-In Successful!',
-      message: `Authenticated via Google as ${email}\nEmployee ID: ${empId}`
-    });
-    setGoogleSigningIn(false);
   };
+
 
   const handleGoogleLogin = () => {
     setAuthMode('app');
@@ -1417,8 +1484,8 @@ export default function AttendanceCheckIn() {
                 </p>
               </div>
 
-              {/* FULL NAME AND EMPLOYEE ID SIDE BY SIDE */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+              {/* FULL NAME AND EMPLOYEE ID */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Full Name *</label>
                   <input 
@@ -1443,21 +1510,60 @@ export default function AttendanceCheckIn() {
                 </div>
               </div>
 
-              {/* EMAIL */}
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Email *</label>
-                <input 
-                  type="email" 
-                  required 
-                  placeholder="Enter your email address (e.g. alex@company.com)" 
-                  value={regData.email} 
-                  onChange={(e) => setRegData({ ...regData, email: e.target.value })} 
-                  style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} 
-                />
+              {/* EMAIL & DESIGNATION */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Email *</label>
+                  <input 
+                    type="email" 
+                    required 
+                    placeholder="Enter your email (e.g. alex@company.com)" 
+                    value={regData.email} 
+                    onChange={(e) => setRegData({ ...regData, email: e.target.value })} 
+                    style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} 
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Designation *</label>
+                  <input 
+                    type="text" 
+                    required
+                    placeholder="e.g. Full Stack Developer" 
+                    value={regData.designation} 
+                    onChange={(e) => setRegData({ ...regData, designation: e.target.value })} 
+                    style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} 
+                  />
+                </div>
+              </div>
+
+              {/* DATE OF JOINING & PHONE NUMBER */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Date of Joining *</label>
+                  <input 
+                    type="date" 
+                    required 
+                    value={regData.joining_date} 
+                    onChange={(e) => setRegData({ ...regData, joining_date: e.target.value })} 
+                    style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} 
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Phone Number</label>
+                  <input 
+                    type="tel" 
+                    placeholder="+91 98765 43210" 
+                    value={regData.phone_number} 
+                    onChange={(e) => setRegData({ ...regData, phone_number: e.target.value })} 
+                    style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} 
+                  />
+                </div>
               </div>
 
               {/* PASSWORD & CONFIRM PASSWORD WITH EYE TOGGLE */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Password *</label>
                   <div style={{ position: 'relative' }}>
@@ -1500,6 +1606,7 @@ export default function AttendanceCheckIn() {
                   </div>
                 </div>
               </div>
+
 
               {/* FACE PHOTO CAPTURE SECTION - CENTERED MODAL CAPTURE */}
               <FaceScanModalCapture onFaceCaptured={(blobOrDataUrl) => {
@@ -1623,10 +1730,9 @@ export default function AttendanceCheckIn() {
                           }}
                         >
                           <option value="2026-10">October 2026</option>
-                          <option value="2026-9">September 2026</option>
-                          <option value="2026-8">August 2026</option>
-                          <option value="2026-7">July 2026</option>
-                          <option value="2026-6">June 2026</option>
+                          <option value="2026-11">November 2026</option>
+                          <option value="2026-12">December 2026</option>
+
                         </select>
                       </div>
                       <button onClick={() => { fetchHistory(); fetchMonthlySummary(); }} style={{ padding: '10px 14px', borderRadius: '12px', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', color: '#334155', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1883,61 +1989,12 @@ export default function AttendanceCheckIn() {
                 <div style={{ flex: 1, height: '1px', backgroundColor: '#e2e8f0' }} />
               </div>
 
-              {/* GOOGLE IDENTITY SERVICES ONE-TAP BUTTON */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  executeGoogleAuth('mdthoufiq0507@gmail.com');
-                }}
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: '14px',
-                  backgroundColor: '#ffffff',
-                  border: '2px solid #0284c7',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  cursor: 'pointer',
-                  boxShadow: '0 2px 8px rgba(2, 132, 199, 0.12)',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
-                  <div style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '50%',
-                    backgroundColor: '#e0f2fe',
-                    color: '#0284c7',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: '800',
-                    fontSize: '14px',
-                    flexShrink: 0
-                  }}>
-                    M
-                  </div>
-                  <div style={{ textAlign: 'left', overflow: 'hidden' }}>
-                    <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', lineHeight: '1.2' }}>
-                      Continue as Mohamed
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>mdthoufiq0507@gmail.com</span>
-                      <ChevronDown style={{ width: '12px', height: '12px', color: '#64748b', flexShrink: 0 }} />
-                    </div>
-                  </div>
-                </div>
+              {/* OFFICIAL GOOGLE SIGN IN BUTTON */}
+              <div style={{ width: '100%', display: 'flex', justifyContent: 'center', minHeight: '44px' }}>
+                <div id="googleSignInBtnDiv" style={{ width: '100%', display: 'flex', justifyContent: 'center' }}></div>
+              </div>
 
-                <svg width="20" height="20" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                  <path fill="#FBBC05" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.62z"/>
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-                </svg>
-              </button>
+
             </form>
           </div>
         </div>

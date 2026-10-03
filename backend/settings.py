@@ -1,6 +1,9 @@
+import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / '.env')
 
 SECRET_KEY = 'django-insecure-*nhfw)3%r8ge1v846uwu&t=k!ahyky6=8)x5(ed%r!_0gb-rm6'
 
@@ -57,10 +60,15 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('DB_NAME', 'attendancetracker'),
+        'USER': os.getenv('DB_USER', 'postgres'),
+        'PASSWORD': os.getenv('DB_PASSWORD', 'postgres'),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '5432'),
     }
 }
+
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -89,11 +97,17 @@ MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # GOOGLE APP SMTP EMAIL & OAUTH CONFIGURATION (App: attendance tracker)
+# GOOGLE APP SMTP EMAIL & OAUTH CONFIGURATION (App: attendance tracker)
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'mdthoufiq0507@gmail.com'
-EMAIL_HOST_PASSWORD = 'zffu esvv soha sueg' # Google App Password
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'mdthoufiq0507@gmail.com')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '') # Loaded from .env
 DEFAULT_FROM_EMAIL = 'Zigmaa Tech Attendance <mdthoufiq0507@gmail.com>'
+
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET', '')
+
+
 

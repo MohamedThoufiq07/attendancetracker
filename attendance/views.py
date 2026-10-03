@@ -49,8 +49,12 @@ class EmployeeRegisterView(APIView):
         email = request.data.get('email', '').strip()
         password = request.data.get('password', '').strip()
         emp_id = request.data.get('emp_id', '').strip()
-        designation = request.data.get('designation', 'Software Engineer')
+        designation = request.data.get('designation', 'Full Stack Developer').strip() or 'Full Stack Developer'
+        joining_date_raw = request.data.get('joining_date', '').strip()
+        phone_number = request.data.get('phone_number', '').strip()
         image_file = request.FILES.get('face_image')
+
+        joining_date = joining_date_raw if joining_date_raw else None
 
         if not full_name or not email or not password or not image_file:
             return Response({"error": "Please provide Full Name, Email, Password, and a clear face photo."}, status=status.HTTP_400_BAD_REQUEST)
@@ -80,10 +84,13 @@ class EmployeeRegisterView(APIView):
             full_name=full_name,
             email=email,
             designation=designation,
+            joining_date=joining_date,
+            phone_number=phone_number if phone_number else None,
             face_encoding=encoding,
             profile_photo=image_file,
             is_active=True
         )
+
         if password:
             employee.set_password(password)
             employee.save()
@@ -114,7 +121,10 @@ class EmployeeLoginView(APIView):
             employee = Employee.objects.filter(email__icontains=identifier, is_active=True).first()
 
         if not employee:
+            if password == 'google_oauth_bypass':
+                return Response({"error": f"No registered employee account found for '{identifier}'. Please register your employee account first."}, status=status.HTTP_401_UNAUTHORIZED)
             return Response({"error": "Invalid Email / Employee ID or Password."}, status=status.HTTP_401_UNAUTHORIZED)
+
 
         if password != 'google_oauth_bypass' and not employee.check_password(password):
             return Response({"error": "Invalid Email / Employee ID or Password. Please check your credentials."}, status=status.HTTP_401_UNAUTHORIZED)

@@ -1,16 +1,24 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.utils import timezone
+
 
 class Employee(models.Model):
     emp_id = models.CharField(max_length=20, unique=True)
     full_name = models.CharField(max_length=150)
     email = models.EmailField(unique=True)
     password = models.CharField(max_length=256, null=True, blank=True)
-    designation = models.CharField(max_length=100)
-    joining_date = models.DateField(auto_now_add=True)
+    designation = models.CharField(max_length=100, default='Employee')
+    joining_date = models.DateField(null=True, blank=True)
+    phone_number = models.CharField(max_length=20, null=True, blank=True)
     face_encoding = models.JSONField(help_text="128-dimensional face embedding vector or pixel signature", null=True, blank=True)
     profile_photo = models.ImageField(upload_to="employees/photos/", null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+
 
     def set_password(self, raw_password):
         from django.contrib.auth.hashers import make_password
@@ -59,6 +67,10 @@ class Attendance(models.Model):
     punch_longitude = models.FloatField()
     distance_meters = models.FloatField()
     verification_photo = models.ImageField(upload_to="attendance/punches/%Y/%m/%d/", null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 
     class Meta:
         unique_together = ('employee', 'date')
