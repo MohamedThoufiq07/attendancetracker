@@ -42,9 +42,9 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '299933614033-
 
 
 
-// EXACT TESTING LOCATION CONSTANTS (Updated from Google Maps link: 26B/3B/1 Kamaraj Nagar - 8.7892385, 78.1171328)
-const OFFICE_LAT = 8.7892385;
-const OFFICE_LNG = 78.1171328;
+// EXACT TESTING LOCATION CONSTANTS (Updated from user's current location: 8.7897224, 78.1349328)
+const OFFICE_LAT = 8.7897224;
+const OFFICE_LNG = 78.1349328;
 const ALLOWED_RADIUS = 300; // meters (Expanded testing radius)
 
 const calculateHaversine = (lat1, lon1, lat2, lon2) => {
