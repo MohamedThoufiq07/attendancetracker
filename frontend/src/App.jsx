@@ -42,9 +42,9 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '299933614033-
 
 
 
-// EXACT TESTING LOCATION CONSTANTS (Updated from Google Maps screenshot: Kareem Shop area)
-const OFFICE_LAT = 8.6928686;
-const OFFICE_LNG = 77.7180183;
+// EXACT TESTING LOCATION CONSTANTS (Updated from Google Maps: 8.789012, 78.116935)
+const OFFICE_LAT = 8.789012;
+const OFFICE_LNG = 78.116935;
 const ALLOWED_RADIUS = 300; // meters (Expanded testing radius)
 
 const calculateHaversine = (lat1, lon1, lat2, lon2) => {
@@ -562,7 +562,7 @@ export default function AttendanceCheckIn() {
       const distStr = distanceMeters ? (distanceMeters > 1000 ? `${(distanceMeters/1000).toFixed(1)} km` : `${Math.round(distanceMeters)} meters`) : '';
       setNotificationModal({
         type: 'error',
-        title: 'Outside Office Geofence',
+        title: 'Outside Office Area',
         message: `You are currently ${distStr ? distStr + ' ' : ''}away from the office. Please reach the office location to punch attendance.`
       });
       return;
@@ -1605,7 +1605,7 @@ export default function AttendanceCheckIn() {
                   </div>
                   <h4 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#991B1B' }}>Camera & Punch Disabled</h4>
                   <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: '#7F1D1D', maxWidth: '340px' }}>
-                    You are outside the office geofence. Please reach the office location to access the camera and punch attendance.
+                    You are outside the office area. Please reach the office location to access the camera and punch attendance.
                   </p>
                 </div>
               )}
