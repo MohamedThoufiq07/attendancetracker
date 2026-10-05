@@ -856,33 +856,108 @@ export default function AttendanceCheckIn() {
     setGoogleModalOpen(true);
   };
 
+  const generateClientMonthlySummary = (year, month, historyRecords = []) => {
+    const numDays = new Date(year, month, 0).getDate();
+    const today = new Date();
+    const dayWiseAudit = [];
+
+    let presentCount = 0;
+    let lateCount = 0;
+    let absentCount = 0;
+
+    const historyByDate = {};
+    (historyRecords || []).forEach(rec => {
+      if (rec.date) historyByDate[rec.date] = rec;
+    });
+
+    for (let day = 1; day <= numDays; day++) {
+      const d = new Date(year, month - 1, day);
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const dayOfWeek = d.getDay(); // 0 = Sun, 6 = Sat
+
+      const att = historyByDate[dateStr];
+
+      if (att) {
+        if (att.status === 'LATE') lateCount++;
+        else presentCount++;
+
+        dayWiseAudit.push({
+          date: dateStr,
+          day_name: d.toLocaleDateString('en-US', { weekday: 'short' }),
+          check_in: att.check_in || '--:--',
+          check_out: att.check_out || '--:--',
+          status: att.status || 'PRESENT',
+          duration_hours: att.duration_hours || 8,
+          distance_m: att.distance_m || 0
+        });
+      } else {
+        const isPastOrToday = d <= today;
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        if (isPastOrToday && !isWeekend) absentCount++;
+
+        dayWiseAudit.push({
+          date: dateStr,
+          day_name: d.toLocaleDateString('en-US', { weekday: 'short' }),
+          check_in: '--:--',
+          check_out: '--:--',
+          status: isWeekend ? 'WEEKEND' : (isPastOrToday ? 'ABSENT' : 'UPCOMING'),
+          duration_hours: 0,
+          distance_m: 0
+        });
+      }
+    }
+
+    return {
+      emp_id: currentUser?.emp_id || 'EMP',
+      employee_name: currentUser?.name || 'Employee',
+      month,
+      year,
+      calendar_days: numDays,
+      present_count: presentCount,
+      late_count: lateCount,
+      absent_count: absentCount,
+      payable_days: Math.max(0, numDays - absentCount),
+      day_wise_audit: dayWiseAudit
+    };
+  };
+
   const fetchHistory = async () => {
     if (!currentUser || !currentUser.emp_id) {
       setHistoryList([]);
-      return;
+      return [];
     }
     try {
       const res = await fetch(`${API_BASE_URL}/api/attendance/history/?emp_id=${currentUser.emp_id}`);
       const data = await res.json();
-      setHistoryList(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setHistoryList(list);
+      return list;
     } catch (err) {
       console.error(err);
       setHistoryList([]);
+      return [];
     }
   };
 
-  const fetchMonthlySummary = async () => {
+  const fetchMonthlySummary = async (overrideHistory = null) => {
     if (!currentUser || !currentUser.emp_id) return;
     setLoadingSummary(true);
+    const records = overrideHistory !== null ? overrideHistory : historyList;
+
     try {
       const res = await fetch(`${API_BASE_URL}/api/attendance/monthly-summary/?emp_id=${currentUser.emp_id}&month=${selectedMonth}&year=${selectedYear}`);
       const data = await res.json();
-      if (res.ok) setMonthlySummary(data);
+      if (res.ok && data && data.day_wise_audit && data.day_wise_audit.length > 0) {
+        setMonthlySummary(data);
+        return;
+      }
     } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingSummary(false);
+      console.warn("Backend monthly summary fetch failed, using client audit matrix:", err);
     }
+
+    const fallbackData = generateClientMonthlySummary(selectedYear, selectedMonth, records);
+    setMonthlySummary(fallbackData);
+    setLoadingSummary(false);
   };
 
   const handleSyncPayslipPro = async () => {
@@ -920,10 +995,17 @@ export default function AttendanceCheckIn() {
 
   useEffect(() => {
     if (activeTab === 'history' && currentUser) {
-      fetchHistory();
-      fetchMonthlySummary();
+      fetchHistory().then((records) => {
+        fetchMonthlySummary(records);
+      });
+    } else if (currentUser) {
+      // Pre-fetch monthly summary
+      fetchHistory().then((records) => {
+        fetchMonthlySummary(records);
+      });
     }
   }, [activeTab, currentUser, selectedMonth, selectedYear]);
+
 
   const filteredHistory = historyList.filter(item => 
     item.employee_name.toLowerCase().includes(searchFilter.toLowerCase()) ||
