@@ -859,6 +859,7 @@ export default function AttendanceCheckIn() {
   const generateClientMonthlySummary = (year, month, historyRecords = []) => {
     const numDays = new Date(year, month, 0).getDate();
     const today = new Date();
+    const todayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
     const dayWiseAudit = [];
 
     let presentCount = 0;
@@ -872,6 +873,11 @@ export default function AttendanceCheckIn() {
 
     for (let day = 1; day <= numDays; day++) {
       const d = new Date(year, month - 1, day);
+      if (d > todayEnd) {
+        // Skip future dates completely
+        continue;
+      }
+
       const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const dayOfWeek = d.getDay(); // 0 = Sun, 6 = Sat
 
@@ -891,21 +897,21 @@ export default function AttendanceCheckIn() {
           distance_m: att.distance_m || 0
         });
       } else {
-        const isPastOrToday = d <= today;
         const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-        if (isPastOrToday && !isWeekend) absentCount++;
+        if (!isWeekend) absentCount++;
 
         dayWiseAudit.push({
           date: dateStr,
           day_name: d.toLocaleDateString('en-US', { weekday: 'short' }),
           check_in: '--:--',
           check_out: '--:--',
-          status: isWeekend ? 'WEEKEND' : (isPastOrToday ? 'ABSENT' : 'UPCOMING'),
+          status: isWeekend ? 'WEEKEND' : 'ABSENT',
           duration_hours: 0,
           distance_m: 0
         });
       }
     }
+
 
     return {
       emp_id: currentUser?.emp_id || 'EMP',
