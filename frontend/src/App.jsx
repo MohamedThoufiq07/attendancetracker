@@ -644,6 +644,16 @@ export default function AttendanceCheckIn() {
       return;
     }
 
+    if (regData.phone_number && regData.phone_number.length !== 10) {
+      setNotificationModal({
+        type: 'error',
+        title: 'Invalid Phone Number',
+        message: 'Phone number must contain exactly 10 digits.'
+      });
+      return;
+    }
+
+
     setIsProcessing(true);
 
     try {
@@ -897,7 +907,8 @@ export default function AttendanceCheckIn() {
           distance_m: att.distance_m || 0
         });
       } else {
-        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        const isWeekend = dayOfWeek === 0; // Sunday only
+
         if (!isWeekend) absentCount++;
 
         dayWiseAudit.push({
@@ -1684,12 +1695,17 @@ export default function AttendanceCheckIn() {
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Phone Number</label>
                   <input 
                     type="tel" 
-                    placeholder="+91 98765 43210" 
+                    maxLength={10}
+                    placeholder="e.g. 9876543210" 
                     value={regData.phone_number} 
-                    onChange={(e) => setRegData({ ...regData, phone_number: e.target.value })} 
+                    onChange={(e) => {
+                      const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      setRegData({ ...regData, phone_number: digitsOnly });
+                    }} 
                     style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} 
                   />
                 </div>
+
               </div>
 
               {/* PASSWORD & CONFIRM PASSWORD WITH EYE TOGGLE */}
@@ -1946,18 +1962,6 @@ export default function AttendanceCheckIn() {
                     </div>
                   ) : null}
 
-                  {/* Search filter for logs */}
-                  <div style={{ position: 'relative' }}>
-                    <Search style={{ width: '16px', height: '16px', color: '#94a3b8', position: 'absolute', left: '14px', top: '14px' }} />
-                    <input
-                      type="text"
-                      placeholder="Search day-wise records..."
-                      value={searchFilter}
-                      onChange={(e) => setSearchFilter(e.target.value)}
-                      style={{ width: '100%', padding: '12px 14px 12px 40px', borderRadius: '12px', backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }}
-                    />
-                  </div>
-
                   {/* Day-Wise Audit Matrix Table */}
                   {monthlySummary && monthlySummary.day_wise_audit ? (
                     <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
@@ -1977,9 +1981,8 @@ export default function AttendanceCheckIn() {
                             </tr>
                           </thead>
                           <tbody>
-                            {monthlySummary.day_wise_audit
-                              .filter(item => !searchFilter || item.date.includes(searchFilter) || item.status.toLowerCase().includes(searchFilter.toLowerCase()))
-                              .map((item, idx) => (
+                            {monthlySummary.day_wise_audit.map((item, idx) => (
+
                                 <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
                                   <td style={{ padding: '12px 16px', fontWeight: '700', color: '#0f172a' }}>{item.date}</td>
                                   <td style={{ padding: '12px 16px', color: '#334155' }}>{item.check_in || '--:--'}</td>
@@ -2115,7 +2118,7 @@ export default function AttendanceCheckIn() {
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '12px 0' }}>
                 <div style={{ flex: 1, height: '1px', backgroundColor: '#e2e8f0' }} />
-                <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700', letterSpacing: '0.5px' }}>OR CONTINUE WITH</span>
+                <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '800', letterSpacing: '0.5px' }}>OR</span>
                 <div style={{ flex: 1, height: '1px', backgroundColor: '#e2e8f0' }} />
               </div>
 
@@ -2123,6 +2126,30 @@ export default function AttendanceCheckIn() {
               <div style={{ width: '100%', display: 'flex', justifyContent: 'center', minHeight: '44px' }}>
                 <div id="googleSignInBtnDiv" style={{ width: '100%', display: 'flex', justifyContent: 'center' }}></div>
               </div>
+
+              {/* DONT HAVE AN ACCOUNT ? CREATE ONE */}
+              <div style={{ textAlign: 'center', marginTop: '16px', fontSize: '13px', color: '#64748b' }}>
+                Don't have an account?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('app');
+                    setActiveTab('onboard');
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    color: '#4f46e5',
+                    fontWeight: '800',
+                    cursor: 'pointer',
+                    textDecoration: 'underline'
+                  }}
+                >
+                  Create one
+                </button>
+              </div>
+
 
 
             </form>

@@ -58,7 +58,8 @@ def get_monthly_payroll_summary(employee, year: int, month: int):
             # Do not mark future dates as ABSENT or WEEKEND
             today = date.today()
             if curr_date <= today:
-                is_weekend = curr_date.weekday() in (5, 6)
+                is_weekend = curr_date.weekday() == 6 # Sunday only
+
                 day_wise_audit.append({
                     "date": curr_date.strftime("%Y-%m-%d"),
                     "day_name": curr_date.strftime("%a"),
