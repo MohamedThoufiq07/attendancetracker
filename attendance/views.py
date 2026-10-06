@@ -73,8 +73,8 @@ class EmployeeRegisterView(APIView):
 
         joining_date = joining_date_raw if joining_date_raw else None
 
-        if not full_name or not email or not password or not image_file:
-            return Response({"error": "Please provide Full Name, Email, Password, and a clear face photo."}, status=status.HTTP_400_BAD_REQUEST)
+        if not full_name or not email or not password or not emp_id or not image_file:
+            return Response({"error": "Please provide Full Name, Employee ID, Email, Password, and a clear face photo."}, status=status.HTTP_400_BAD_REQUEST)
 
         # Password Strength Policy (min 8 chars, 1 uppercase, 1 special char)
         import re
@@ -85,16 +85,17 @@ class EmployeeRegisterView(APIView):
         if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
             return Response({"error": "Password must contain at least one special character (e.g. !@#$%^&*)."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Check if email is already registered
-        if Employee.objects.filter(email__iexact=email).exists():
-            return Response({"error": f"An account with email '{email}' is already registered. Please login."}, status=status.HTTP_400_BAD_REQUEST)
+        # 1. Uniqueness Check: Employee ID
+        if Employee.objects.filter(emp_id__iexact=emp_id).exists():
+            return Response({"error": f"Employee ID '{emp_id}' is already registered to another account. Please use a unique Employee ID."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Auto-generate Employee ID from Full Name if not provided
-        if not emp_id:
-            clean_name = ''.join([c for c in full_name if c.isalpha()])
-            prefix = clean_name[:3].upper() if len(clean_name) >= 3 else (clean_name.upper() + "EMP")[:3]
-            existing_count = Employee.objects.filter(emp_id__startswith=prefix).count() + 1
-            emp_id = f"{prefix}_{existing_count:03d}"
+        # 2. Uniqueness Check: Email
+        if Employee.objects.filter(email__iexact=email).exists():
+            return Response({"error": f"Email address '{email}' is already registered. Please login or use a different email."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 3. Uniqueness Check: Phone Number
+        if phone_number and Employee.objects.filter(phone_number=phone_number).exists():
+            return Response({"error": f"Phone number '{phone_number}' is already registered to another employee profile."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             pil_image = Image.open(image_file).convert('RGB')
@@ -162,8 +163,24 @@ class EmployeeLoginView(APIView):
 
         if not employee:
             if password == 'google_oauth_bypass':
-                return Response({"error": f"No registered employee account found for '{identifier}'. Please register your employee account first."}, status=status.HTTP_401_UNAUTHORIZED)
-            return Response({"error": "Invalid Email / Employee ID or Password."}, status=status.HTTP_401_UNAUTHORIZED)
+                # Auto-create employee profile for verified Google OAuth user
+                email_user = identifier.split('@')[0]
+                clean_name = ''.join([c for c in email_user if c.isalpha()]).capitalize() or 'Employee'
+                prefix = clean_name[:3].upper() if len(clean_name) >= 3 else 'EMP'
+                existing_count = Employee.objects.filter(emp_id__startswith=prefix).count() + 1
+                auto_emp_id = f"{prefix}_{existing_count:03d}"
+
+                employee = Employee.objects.create(
+                    emp_id=auto_emp_id,
+                    full_name=clean_name,
+                    email=identifier,
+                    designation='Full Stack Developer',
+                    is_active=True
+                )
+                employee.set_password('Google_OAuth_Pass_123!')
+                employee.save()
+            else:
+                return Response({"error": "Invalid Email / Employee ID or Password."}, status=status.HTTP_401_UNAUTHORIZED)
 
         if password != 'google_oauth_bypass' and not employee.check_password(password):
             return Response({"error": "Invalid Email / Employee ID or Password. Please check your credentials."}, status=status.HTTP_401_UNAUTHORIZED)

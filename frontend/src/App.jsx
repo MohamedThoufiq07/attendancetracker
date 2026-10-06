@@ -189,6 +189,7 @@ export default function AttendanceCheckIn() {
   // Registration form state (Empty defaults so placeholders show!)
   const [regData, setRegData] = useState({
     full_name: '',
+    emp_id: '',
     email: '',
     password: '',
     confirm_password: '',
@@ -651,6 +652,7 @@ export default function AttendanceCheckIn() {
     try {
       const formData = new FormData();
       formData.append('full_name', regData.full_name);
+      formData.append('emp_id', regData.emp_id);
       formData.append('email', regData.email);
       formData.append('password', regData.password);
       formData.append('designation', regData.designation || 'Full Stack Developer');
@@ -1642,10 +1644,11 @@ export default function AttendanceCheckIn() {
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Employee ID *</label>
                   <input 
                     type="text" 
-                    readOnly
-                    placeholder="Auto-generated ID" 
-                    value={getAutoEmpId(regData.full_name) || 'Emp ID'} 
-                    style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#F1F5F9', border: '1px solid #cbd5e1', fontSize: '13px', fontWeight: '800', color: '#4f46e5', boxSizing: 'border-box' }} 
+                    required
+                    placeholder="Enter Employee ID (e.g. THO_001)" 
+                    value={regData.emp_id} 
+                    onChange={(e) => setRegData({ ...regData, emp_id: e.target.value.toUpperCase() })} 
+                    style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', fontWeight: '700', color: '#0f172a', boxSizing: 'border-box' }} 
                   />
                 </div>
               </div>
