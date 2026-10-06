@@ -172,24 +172,8 @@ class EmployeeLoginView(APIView):
 
         if not employee:
             if password == 'google_oauth_bypass':
-                # Auto-create employee profile for verified Google OAuth user
-                email_user = identifier.split('@')[0]
-                clean_name = ''.join([c for c in email_user if c.isalpha()]).capitalize() or 'Employee'
-                prefix = clean_name[:3].upper() if len(clean_name) >= 3 else 'EMP'
-                existing_count = Employee.objects.filter(emp_id__startswith=prefix).count() + 1
-                auto_emp_id = f"{prefix}_{existing_count:03d}"
-
-                employee = Employee.objects.create(
-                    emp_id=auto_emp_id,
-                    full_name=clean_name,
-                    email=identifier,
-                    designation='Full Stack Developer',
-                    is_active=True
-                )
-                employee.set_password('Google_OAuth_Pass_123!')
-                employee.save()
-            else:
-                return Response({"error": "Invalid Email / Employee ID or Password."}, status=status.HTTP_401_UNAUTHORIZED)
+                return Response({"error": f"No registered employee account found for '{identifier}'. Please register your employee account first."}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({"error": "Invalid Email / Employee ID or Password."}, status=status.HTTP_401_UNAUTHORIZED)
 
         if password != 'google_oauth_bypass' and not employee.check_password(password):
             return Response({"error": "Invalid Email / Employee ID or Password. Please check your credentials."}, status=status.HTTP_401_UNAUTHORIZED)

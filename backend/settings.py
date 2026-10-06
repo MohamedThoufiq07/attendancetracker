@@ -110,9 +110,10 @@ TEMPLATES = [
     },
 ]
 
-IS_VERCEL = os.getenv('VERCEL') is not None or not os.access(BASE_DIR, os.W_OK)
+import sys
+IS_LOCAL = ('runserver' in sys.argv or 'test' in sys.argv) and not os.getenv('VERCEL')
 
-if IS_VERCEL:
+if not IS_LOCAL:
     # VERCEL DEPLOYMENT -> Connect to Neon Cloud PostgreSQL
     if os.getenv('DATABASE_URL'):
         import urllib.parse
@@ -187,6 +188,7 @@ try:
 except ImportError:
     pass
 
+IS_VERCEL = not IS_LOCAL
 MEDIA_URL = '/media/'
 MEDIA_ROOT = Path('/tmp/media') if IS_VERCEL else BASE_DIR / 'media'
 
