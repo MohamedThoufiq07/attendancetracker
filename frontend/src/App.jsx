@@ -588,10 +588,13 @@ export default function AttendanceCheckIn() {
       setHasCheckedIn(!hasCheckedIn);
 
     } catch (err) {
+      const isFetchError = err.message === 'Failed to fetch' || err.name === 'TypeError';
       setNotificationModal({
         type: 'error',
-        title: 'Face Verification Failed',
-        message: err.message || 'Captured face does not match the registered employee photo. Verification failed.'
+        title: isFetchError ? 'Server Connection Error' : 'Face Verification Failed',
+        message: isFetchError 
+          ? 'Unable to reach backend server. Please verify server status or connection.' 
+          : (err.message || 'Captured face does not match the registered employee photo.')
       });
     } finally {
       setIsProcessing(false);
