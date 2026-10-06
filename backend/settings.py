@@ -112,7 +112,8 @@ TEMPLATES = [
 
 IS_VERCEL = os.getenv('VERCEL') is not None or not os.access(BASE_DIR, os.W_OK)
 
-try:
+if IS_VERCEL:
+    # VERCEL DEPLOYMENT -> Connect to Neon Cloud PostgreSQL
     if os.getenv('DATABASE_URL'):
         import urllib.parse
         url = urllib.parse.urlparse(os.getenv('DATABASE_URL'))
@@ -143,11 +144,16 @@ try:
                 }
             }
         }
-except Exception:
+else:
+    # LOCALHOST ENVIRONMENT -> Connect to Local PostgreSQL
     DATABASES = {
         'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': Path('/tmp/db.sqlite3') if IS_VERCEL else BASE_DIR / 'db.sqlite3',
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('DB_NAME', 'attendancetracker'),
+            'USER': os.getenv('DB_USER', 'postgres'),
+            'PASSWORD': os.getenv('DB_PASSWORD', 'thoufiq'),
+            'HOST': os.getenv('DB_HOST', 'localhost'),
+            'PORT': os.getenv('DB_PORT', '5432'),
         }
     }
 

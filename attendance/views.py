@@ -76,6 +76,15 @@ class EmployeeRegisterView(APIView):
         if not full_name or not email or not password or not image_file:
             return Response({"error": "Please provide Full Name, Email, Password, and a clear face photo."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Password Strength Policy (min 8 chars, 1 uppercase, 1 special char)
+        import re
+        if len(password) < 8:
+            return Response({"error": "Password must be at least 8 characters long."}, status=status.HTTP_400_BAD_REQUEST)
+        if not re.search(r'[A-Z]', password):
+            return Response({"error": "Password must contain at least one uppercase letter (A-Z)."}, status=status.HTTP_400_BAD_REQUEST)
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+            return Response({"error": "Password must contain at least one special character (e.g. !@#$%^&*)."}, status=status.HTTP_400_BAD_REQUEST)
+
         # Check if email is already registered
         if Employee.objects.filter(email__iexact=email).exists():
             return Response({"error": f"An account with email '{email}' is already registered. Please login."}, status=status.HTTP_400_BAD_REQUEST)
@@ -95,6 +104,16 @@ class EmployeeRegisterView(APIView):
             return Response({"error": str(ve)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({"error": f"Failed to process face image: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Prevent duplicate face registration across active employees
+        if encoding:
+            existing_employees = Employee.objects.filter(is_active=True).exclude(face_encoding__isnull=True)
+            for existing_emp in existing_employees:
+                if existing_emp.face_encoding and len(existing_emp.face_encoding) > 0:
+                    if compare_face_vectors(existing_emp.face_encoding, encoding):
+                        return Response({
+                            "error": f"Registration rejected! This face is already registered to employee '{existing_emp.full_name}' ({existing_emp.emp_id}). The same face cannot be re-registered for a different account."
+                        }, status=status.HTTP_400_BAD_REQUEST)
 
         employee = Employee.objects.create(
             emp_id=emp_id,
@@ -139,7 +158,7 @@ class EmployeeLoginView(APIView):
         if not employee:
             employee = Employee.objects.filter(emp_id__iexact=identifier, is_active=True).first()
         if not employee:
-            employee = Employee.objects.filter(email__icontains=identifier, is_active=True).first()
+            employee = Employee.objects.filter(email__icontains=identifier.lower(), is_active=True).first()
 
         if not employee:
             if password == 'google_oauth_bypass':

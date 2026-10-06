@@ -614,6 +614,19 @@ export default function AttendanceCheckIn() {
       return;
     }
 
+    const hasMinLen = (regData.password || '').length >= 8;
+    const hasUpper = /[A-Z]/.test(regData.password || '');
+    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(regData.password || '');
+
+    if (!hasMinLen || !hasUpper || !hasSpecial) {
+      setNotificationModal({
+        type: 'error',
+        title: 'Weak Password Policy',
+        message: 'Password must be at least 8 characters long, contain at least 1 uppercase letter (A-Z), and at least 1 special character (e.g. !@#$%^&*).'
+      });
+      return;
+    }
+
     if (!regPhoto) {
       setNotificationModal({
         type: 'error',
@@ -944,6 +957,7 @@ export default function AttendanceCheckIn() {
       const data = await res.json();
       if (res.ok && data && data.day_wise_audit && data.day_wise_audit.length > 0) {
         setMonthlySummary(data);
+        setLoadingSummary(false);
         return;
       }
     } catch (err) {
