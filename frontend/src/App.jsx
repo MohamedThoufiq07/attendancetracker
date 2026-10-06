@@ -926,7 +926,6 @@ export default function AttendanceCheckIn() {
       setHistoryList(list);
       return list;
     } catch (err) {
-      console.error(err);
       setHistoryList([]);
       return [];
     }
@@ -945,13 +944,14 @@ export default function AttendanceCheckIn() {
         return;
       }
     } catch (err) {
-      console.warn("Backend monthly summary fetch failed, using client audit matrix:", err);
+      // Use fallback client audit matrix silently
     }
 
     const fallbackData = generateClientMonthlySummary(selectedYear, selectedMonth, records);
     setMonthlySummary(fallbackData);
     setLoadingSummary(false);
   };
+
 
   const handleSyncPayslipPro = async () => {
     if (!currentUser || !currentUser.emp_id) return;

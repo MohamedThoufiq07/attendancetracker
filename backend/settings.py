@@ -58,6 +58,12 @@ MIDDLEWARE = [
 
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.netlify\.app$",
+    r"^https://.*\.vercel\.app$",
+    r"^http://localhost:\d+$",
+    r"^http://127\.0\.0\.1:\d+$",
+]
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
@@ -77,6 +83,7 @@ CORS_ALLOW_METHODS = [
     'POST',
     'PUT',
 ]
+
 
 
 ROOT_URLCONF = 'backend.urls'
