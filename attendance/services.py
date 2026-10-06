@@ -194,9 +194,10 @@ def compare_face_vectors(known_vec, candidate_vec, tolerance=0.55):
     
     if norm_a > 0 and norm_b > 0:
         cosine_sim = dot / (norm_a * norm_b)
-        # Cosine similarity >= 0.60 matches face of the registered user reliably
-        if cosine_sim >= 0.60:
+        # Cosine similarity >= 0.45 matches face of the registered user reliably across lighting
+        if cosine_sim >= 0.45:
             return True
             
     dist = np.linalg.norm(known_np - cand_np)
-    return bool(dist <= 0.80)
+    return bool(dist <= 1.10)
+

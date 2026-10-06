@@ -1417,9 +1417,6 @@ export default function AttendanceCheckIn() {
                   <h4 style={{ margin: 0, fontSize: '14px', fontWeight: '800', color: '#0f172a' }}>
                     Office Location Verification
                   </h4>
-                  <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#64748b' }}>
-                    Office: Zigmaa Tech Campus
-                  </p>
                 </div>
               </div>
 
@@ -1455,9 +1452,12 @@ export default function AttendanceCheckIn() {
                     gap: '8px'
                   }}>
                     <AlertTriangle style={{ width: '18px', height: '18px', color: '#EF4444', flexShrink: 0 }} />
-                    Outside Office Area {distanceMeters ? `(${distanceMeters > 1000 ? (distanceMeters / 1000).toFixed(1) + ' km' : Math.round(distanceMeters) + ' meters'} away)` : ''}
+                    Turn on location to know your distance away from office
                   </div>
                 )}
+
+
+
 
                 {/* CLICK TO KNOW DISTANCE IN GOOGLE MAPS */}
                 <a
@@ -1550,13 +1550,13 @@ export default function AttendanceCheckIn() {
               {isWithinZone ? (
                 <FaceScanModalCapture 
                   title="Biometric Punch Verification"
-                  description={hasCheckedIn ? "Scan face to check-out for today's session." : "Scan face to check-in for today's session."}
+                  description={hasCheckedIn ? "Hold face steady in green oval for automatic check-out." : "Hold face steady in green oval for automatic check-in."}
                   buttonText={hasCheckedIn ? "Check Out" : "Check In"}
                   resetOnCapture={true}
+                  autoCapture={true}
                   onFaceCaptured={(blob) => handlePunchAttendance(blob)} 
                 />
               ) : (
-
                 <div style={{
                   width: '100%',
                   padding: '36px 20px',
@@ -1589,6 +1589,8 @@ export default function AttendanceCheckIn() {
                   </p>
                 </div>
               )}
+
+
 
             </div>
           )}

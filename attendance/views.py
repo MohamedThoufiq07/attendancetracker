@@ -192,8 +192,9 @@ class MarkAttendanceView(APIView):
         is_match = compare_face_vectors(employee.face_encoding, captured_encoding)
         if not is_match and employee.profile_photo:
             try:
-                prof_img = Image.open(employee.profile_photo.path).convert('RGB')
+                prof_img = Image.open(employee.profile_photo).convert('RGB')
                 prof_np = np.array(prof_img)
+
                 fresh_encoding = compute_face_encoding(prof_np)
                 if fresh_encoding:
                     employee.face_encoding = fresh_encoding

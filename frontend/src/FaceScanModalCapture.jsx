@@ -9,7 +9,8 @@ export default function FaceScanModalCapture({
   title = "Biometric Face Scan",
   description = "Center face scan required to activate attendance profile.",
   buttonText = "Open Face Scanner",
-  resetOnCapture = false
+  resetOnCapture = false,
+  autoCapture = false
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -19,6 +20,8 @@ export default function FaceScanModalCapture({
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
+  const autoCapturedRef = useRef(false);
+  const handleCaptureRef = useRef(null);
 
   // Stop camera tracks cleanly
   const stopCamera = () => {
@@ -40,6 +43,7 @@ export default function FaceScanModalCapture({
 
       setLoading(true);
       setErrorMessage('');
+      autoCapturedRef.current = false;
 
       try {
         const api = faceapi || window.faceapi;
@@ -77,64 +81,10 @@ export default function FaceScanModalCapture({
     };
   }, [isOpen]);
 
-  const [faceStatus, setFaceStatus] = useState({ valid: false, count: 0, text: 'Align single face in oval frame' });
-
-  const handleVideoPlay = () => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
-
-    const api = faceapi || window.faceapi;
-    const displaySize = { width: video.clientWidth || 480, height: video.clientHeight || 360 };
-    if (api && api.matchDimensions) {
-      api.matchDimensions(canvas, displaySize);
-    } else {
-      canvas.width = displaySize.width;
-      canvas.height = displaySize.height;
-    }
-
-    const interval = setInterval(async () => {
-      if (!video || video.paused || video.ended || !isOpen) return;
-
-      let detectedCount = 0;
-      if (api && api.detectAllFaces) {
-        try {
-          const detections = await api.detectAllFaces(
-            video,
-            new api.TinyFaceDetectorOptions({ scoreThreshold: 0.4 })
-          );
-          detectedCount = detections.length;
-        } catch (e) {}
-      } else if ('FaceDetector' in window) {
-        try {
-          const nativeDetector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 5 });
-          const faces = await nativeDetector.detect(video);
-          detectedCount = faces.length;
-        } catch (e) {}
-      } else if (api && api.detectSingleFace) {
-        try {
-          const single = await api.detectSingleFace(video, new api.TinyFaceDetectorOptions({ scoreThreshold: 0.4 }));
-          detectedCount = single ? 1 : 0;
-        } catch (e) {}
-      }
-
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height); // Keep canvas clear (no square rectangles)
-
-      if (detectedCount === 1) {
-        setFaceStatus({ valid: true, count: 1, text: '✓ Single Face Verified' });
-      } else if (detectedCount > 1) {
-        setFaceStatus({ valid: false, count: detectedCount, text: '⚠️ Multiple faces detected! Only 1 face allowed.' });
-      } else {
-        setFaceStatus({ valid: false, count: 0, text: 'Align single face in oval frame' });
-      }
-    }, 120);
-
-    return () => clearInterval(interval);
-  };
+  const [faceStatus, setFaceStatus] = useState({ valid: false, count: 0, text: 'Align face inside the center oval' });
 
   const handleCapture = () => {
-    if (!faceStatus.valid || !videoRef.current) return;
+    if (!videoRef.current) return;
 
     const video = videoRef.current;
     const offCanvas = document.createElement('canvas');
@@ -160,10 +110,90 @@ export default function FaceScanModalCapture({
     }, 'image/jpeg', 0.95);
   };
 
+  handleCaptureRef.current = handleCapture;
+
+  const handleVideoPlay = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    const api = faceapi || window.faceapi;
+    const displaySize = { width: video.clientWidth || 480, height: video.clientHeight || 360 };
+    if (api && api.matchDimensions) {
+      api.matchDimensions(canvas, displaySize);
+    } else {
+      canvas.width = displaySize.width;
+      canvas.height = displaySize.height;
+    }
+
+    const interval = setInterval(async () => {
+      if (!video || video.paused || video.ended || !isOpen) return;
+
+      let detections = [];
+      if (api && api.detectAllFaces) {
+        try {
+          const rawDetections = await api.detectAllFaces(
+            video,
+            new api.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 })
+          );
+          if (api.resizeResults) {
+            detections = api.resizeResults(rawDetections, displaySize);
+          } else {
+            detections = rawDetections;
+          }
+        } catch (e) {}
+      } else if ('FaceDetector' in window) {
+        try {
+          const nativeDetector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 5 });
+          const faces = await nativeDetector.detect(video);
+          detections = faces.map(f => ({ box: f.boundingBox }));
+        } catch (e) {}
+      }
+
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height); // Keep canvas clean (no square rectangles)
+
+      const detectedCount = detections.length;
+
+      if (detectedCount > 1) {
+        autoCapturedRef.current = false;
+        setFaceStatus({ valid: false, count: detectedCount, text: '⚠️ Multiple faces detected! Only 1 person allowed.' });
+      } else if (detectedCount === 1) {
+        const box = detections[0].box || detections[0];
+        const faceCenterX = box.x + box.width / 2;
+        const faceCenterY = box.y + box.height / 2;
+        const viewCenterX = displaySize.width / 2;
+        const viewCenterY = displaySize.height / 2;
+
+        const deltaX = Math.abs(faceCenterX - viewCenterX);
+        const deltaY = Math.abs(faceCenterY - viewCenterY);
+
+        if (deltaX <= 75 && deltaY <= 75) {
+          setFaceStatus({ valid: true, count: 1, text: autoCapture ? '✓ Face Aligned — Auto Punching...' : '✓ Single Face Aligned & Verified' });
+          if (autoCapture && !autoCapturedRef.current) {
+            autoCapturedRef.current = true;
+            setTimeout(() => {
+              if (handleCaptureRef.current) handleCaptureRef.current();
+            }, 250);
+          }
+        } else {
+          autoCapturedRef.current = false;
+          setFaceStatus({ valid: false, count: 1, text: 'Position face inside the green center oval' });
+        }
+      } else {
+        autoCapturedRef.current = false;
+        setFaceStatus({ valid: false, count: 0, text: 'Align face inside the center oval' });
+      }
+    }, 120);
+
+    return () => clearInterval(interval);
+  };
+
   const closeModal = () => {
     stopCamera();
     setIsOpen(false);
   };
+
 
   return (
     <div className="w-full">
@@ -260,14 +290,15 @@ export default function FaceScanModalCapture({
                     className="absolute inset-0 w-full h-full pointer-events-none transform -scale-x-100"
                   />
 
-                  {/* Perfectly Proportioned Face Oval Overlay (190px x 240px) */}
-                  <div className={`absolute w-[190px] h-[240px] rounded-[50%] pointer-events-none transition-all duration-300 ${
+                  {/* Compact Face Shape Target Oval (165px x 210px) */}
+                  <div className={`absolute w-[165px] h-[210px] rounded-[50%] pointer-events-none transition-all duration-300 ${
                     faceStatus.valid
                       ? 'border-4 border-emerald-400 shadow-[0_0_25px_rgba(52,211,153,0.5)] scale-102'
                       : faceStatus.count > 1
                       ? 'border-4 border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.5)]'
                       : 'border-2 border-dashed border-slate-400/80'
                   }`} />
+
 
 
                   {/* Status Tag */}
@@ -290,24 +321,36 @@ export default function FaceScanModalCapture({
               )}
             </div>
 
-            {/* Modal Bottom Button */}
-            <button
-              type="button"
-              onClick={handleCapture}
-              disabled={!faceStatus.valid}
-              className={`mt-4 w-full py-3 px-4 rounded-xl flex items-center justify-center gap-2 font-semibold text-sm transition ${
+            {/* Modal Bottom Action (Auto-Punch vs Registration Manual Capture) */}
+            {autoCapture ? (
+              <div className={`mt-4 w-full py-3 px-4 rounded-xl flex items-center justify-center gap-2 font-semibold text-sm transition ${
                 faceStatus.valid
-                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg cursor-pointer active:scale-95'
-                  : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
-              }`}
-            >
-              <Camera size={16} />
-              {faceStatus.valid ? 'Capture & Confirm' : faceStatus.count > 1 ? 'Multiple faces found - 1 face only' : 'Align single face in oval frame'}
-            </button>
+                  ? 'bg-emerald-600 text-white shadow-lg animate-pulse'
+                  : 'bg-slate-800 text-slate-400 border border-slate-700'
+              }`}>
+                <RefreshCw className={faceStatus.valid ? "animate-spin text-white" : "text-slate-500"} size={16} />
+                <span>{faceStatus.valid ? '✓ Face Aligned — Punching Automatically...' : faceStatus.count > 1 ? 'Multiple faces found - 1 face only' : 'Hold still... Auto-punching when aligned'}</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleCapture}
+                disabled={!faceStatus.valid}
+                className={`mt-4 w-full py-3 px-4 rounded-xl flex items-center justify-center gap-2 font-semibold text-sm transition ${
+                  faceStatus.valid
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg cursor-pointer active:scale-95'
+                    : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                }`}
+              >
+                <Camera size={16} />
+                {faceStatus.valid ? 'Capture & Confirm' : faceStatus.count > 1 ? 'Multiple faces found - 1 face only' : 'Align face inside center oval'}
+              </button>
+            )}
           </div>
         </div>
       )}
     </div>
   );
 }
+
 

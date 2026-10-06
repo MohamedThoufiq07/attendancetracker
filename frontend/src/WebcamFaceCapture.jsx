@@ -189,11 +189,11 @@ export default function WebcamFaceCapture({
               }}
             />
 
-            {/* Single Round Oval Face Overlay (190px x 240px) */}
+            {/* Compact Face Shape Target Oval (165px x 210px) */}
             <div style={{
               position: 'absolute',
-              width: '190px',
-              height: '240px',
+              width: '165px',
+              height: '210px',
               borderRadius: '50%',
               pointerEvents: 'none',
               transition: 'all 0.3s ease',
@@ -201,6 +201,7 @@ export default function WebcamFaceCapture({
               boxShadow: faceDetected ? '0 0 25px rgba(16, 185, 129, 0.5)' : 'none',
               transform: faceDetected ? 'scale(1.03)' : 'scale(1)'
             }} />
+
 
 
 
