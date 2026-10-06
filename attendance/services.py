@@ -2,11 +2,12 @@ import math
 from datetime import time, datetime
 import numpy as np
 
-# EXACT TESTING OFFICE COORDINATES (Updated from user's current location: 8.788711, 78.13152)
-ZIGMA_OFFICE_LAT = 8.788711
-ZIGMA_OFFICE_LNG = 78.13152
+# EXACT TESTING OFFICE COORDINATES (Updated from user's specified office location: 8.7892563, 78.117146)
+ZIGMA_OFFICE_LAT = 8.7892563
+ZIGMA_OFFICE_LNG = 78.117146
 
-ALLOWED_RADIUS_METERS = 300.0
+ALLOWED_RADIUS_METERS = 70.0
+
 CUTOFF_TIME = time(10, 0, 0)
 
 def haversine_distance(lat1, lon1, lat2, lon2):

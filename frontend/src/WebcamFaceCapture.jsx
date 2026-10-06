@@ -74,28 +74,19 @@ export default function WebcamFaceCapture({
       if (!video || video.paused || video.ended || (mode === 'register' && capturedPhoto)) return;
 
       try {
-        const detection = await faceapi.detectSingleFace(video, detectorOptions);
+        let detectedCount = 0;
+        if (faceapi.detectAllFaces) {
+          const detections = await faceapi.detectAllFaces(video, detectorOptions);
+          detectedCount = detections.length;
+        } else {
+          const detection = await faceapi.detectSingleFace(video, detectorOptions);
+          detectedCount = detection ? 1 : 0;
+        }
+
         const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // Keep canvas clean (no inner square boxes)
 
-        if (detection) {
-          const resized = faceapi.resizeResults(detection, displaySize);
-          const { x, y, width, height } = resized.box;
-
-          // Draw Dynamic High-Tech Green Bounding Box
-          ctx.strokeStyle = '#10b981';
-          ctx.lineWidth = 3;
-          ctx.strokeRect(x, y, width, height);
-
-          // Corner accents
-          const len = 14;
-          ctx.strokeStyle = '#34d399';
-          ctx.lineWidth = 4;
-          // top-left
-          ctx.beginPath(); ctx.moveTo(x, y + len); ctx.lineTo(x, y); ctx.lineTo(x + len, y); ctx.stroke();
-          // top-right
-          ctx.beginPath(); ctx.moveTo(x + width - len, y); ctx.lineTo(x + width, y); ctx.lineTo(x + width, y + len); ctx.stroke();
-
+        if (detectedCount === 1) {
           setFaceDetected(true);
         } else {
           setFaceDetected(false);
@@ -104,6 +95,7 @@ export default function WebcamFaceCapture({
         setFaceDetected(false);
       }
     }, 120);
+
 
     return () => clearInterval(interval);
   };
@@ -197,19 +189,20 @@ export default function WebcamFaceCapture({
               }}
             />
 
-            {/* Center Visual Guide Overlay */}
+            {/* Single Round Oval Face Overlay (190px x 240px) */}
             <div style={{
               position: 'absolute',
-              width: '50%',
-              maxHeight: '75%',
-              aspectRatio: '3 / 4',
-              borderRadius: '28px',
+              width: '190px',
+              height: '240px',
+              borderRadius: '50%',
               pointerEvents: 'none',
               transition: 'all 0.3s ease',
-              border: faceDetected ? '3px solid #10b981' : '2px dashed rgba(148, 163, 184, 0.6)',
-              boxShadow: faceDetected ? '0 0 25px rgba(16, 185, 129, 0.45)' : 'none',
-              transform: faceDetected ? 'scale(1.04)' : 'scale(1)'
+              border: faceDetected ? '4px solid #10b981' : '2px dashed rgba(148, 163, 184, 0.6)',
+              boxShadow: faceDetected ? '0 0 25px rgba(16, 185, 129, 0.5)' : 'none',
+              transform: faceDetected ? 'scale(1.03)' : 'scale(1)'
             }} />
+
+
 
             {/* Dynamic Status Badge */}
             <div style={{ position: 'absolute', top: '12px', left: '12px', zIndex: 10 }}>

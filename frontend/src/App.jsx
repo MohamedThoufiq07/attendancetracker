@@ -43,10 +43,12 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '299933614033-
 
 
 
-// EXACT TESTING LOCATION CONSTANTS (Updated from user's current location: 8.788711, 78.13152)
-const OFFICE_LAT = 8.788711;
-const OFFICE_LNG = 78.13152;
-const ALLOWED_RADIUS = 300; // meters (Expanded testing radius)
+// EXACT TESTING LOCATION CONSTANTS (Updated from user's specified office location: 8.7892563, 78.117146)
+const DEFAULT_OFFICE_LAT = 8.7892563;
+const DEFAULT_OFFICE_LNG = 78.117146;
+const ALLOWED_RADIUS = 70; // 70 meters strict office geofence
+
+
 
 
 const calculateHaversine = (lat1, lon1, lat2, lon2) => {
@@ -133,11 +135,14 @@ export default function AttendanceCheckIn() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Geofence states
+  const [officeLat, setOfficeLat] = useState(() => parseFloat(localStorage.getItem('OFFICE_LAT')) || DEFAULT_OFFICE_LAT);
+  const [officeLng, setOfficeLng] = useState(() => parseFloat(localStorage.getItem('OFFICE_LNG')) || DEFAULT_OFFICE_LNG);
   const [userCoords, setUserCoords] = useState(null);
   const [distanceMeters, setDistanceMeters] = useState(null);
   const [isWithinZone, setIsWithinZone] = useState(false);
   const [gpsError, setGpsError] = useState(null);
   const [locationLoading, setLocationLoading] = useState(true);
+
 
   // Time & Late evaluation
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -291,7 +296,7 @@ export default function AttendanceCheckIn() {
         const lng = position.coords.longitude;
         setUserCoords({ lat, lng });
 
-        const dist = calculateHaversine(lat, lng, OFFICE_LAT, OFFICE_LNG);
+        const dist = calculateHaversine(lat, lng, officeLat, officeLng);
         setDistanceMeters(dist);
         setIsWithinZone(dist <= ALLOWED_RADIUS);
         setLocationLoading(false);
@@ -305,7 +310,8 @@ export default function AttendanceCheckIn() {
     );
 
     return () => navigator.geolocation.clearWatch(watchId);
-  }, []);
+  }, [officeLat, officeLng]);
+
 
   const startPunchCamera = async () => {
     try {
@@ -423,32 +429,11 @@ export default function AttendanceCheckIn() {
           }
 
           if (detectedBoxes.length === 1) {
-            const box = detectedBoxes[0];
-            // Draw Dynamic Green Bounding Box (#22c55e / #10b981)
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = '#22c55e';
-            ctx.strokeRect(box.x, box.y, box.width, box.height);
-
-            // Draw Label Tag Badge over box
-            ctx.fillStyle = '#22c55e';
-            const labelText = currentUser ? `✓ Verified: ${currentUser.name}` : '✓ Face Verified';
-            ctx.font = 'bold 14px sans-serif';
-            const textWidth = ctx.measureText(labelText).width;
-            ctx.fillRect(box.x, Math.max(0, box.y - 28), textWidth + 16, 26);
-
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText(labelText, box.x + 8, Math.max(18, box.y - 10));
-
-            setPunchFaceStatus({ count: 1, text: '✓ Face Verified', isValid: true });
+            setPunchFaceStatus({ count: 1, text: '✓ Single Face Verified', isValid: true });
           } else if (detectedBoxes.length > 1) {
-            detectedBoxes.forEach(box => {
-              ctx.lineWidth = 3;
-              ctx.strokeStyle = '#ef4444';
-              ctx.strokeRect(box.x, box.y, box.width, box.height);
-            });
-            setPunchFaceStatus({ count: detectedBoxes.length, text: 'Multiple faces detected! Only 1 face allowed.', isValid: false });
+            setPunchFaceStatus({ count: detectedBoxes.length, text: '⚠️ Multiple faces detected! Only 1 face allowed.', isValid: false });
           } else {
-            setPunchFaceStatus({ count: 0, text: 'Searching for face... Keep your head straight', isValid: false });
+            setPunchFaceStatus({ count: 0, text: 'Searching for face... Keep head straight', isValid: false });
           }
         }
       }
@@ -461,7 +446,7 @@ export default function AttendanceCheckIn() {
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
           const ctx = canvas.getContext('2d');
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.clearRect(0, 0, canvas.width, canvas.height); // Keep canvas clean (no inner square boxes)
 
           let detectedBoxes = [];
           if (api && api.detectAllFaces && isModelLoaded) {
@@ -477,35 +462,15 @@ export default function AttendanceCheckIn() {
           }
 
           if (detectedBoxes.length === 1) {
-            const box = detectedBoxes[0];
-            // Draw Dynamic Green Bounding Box
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = '#22c55e';
-            ctx.strokeRect(box.x, box.y, box.width, box.height);
-
-            // Draw Label Tag Badge over box
-            ctx.fillStyle = '#22c55e';
-            const labelText = regData.full_name ? `✓ Verified: ${regData.full_name}` : '✓ Face Verified';
-            ctx.font = 'bold 14px sans-serif';
-            const textWidth = ctx.measureText(labelText).width;
-            ctx.fillRect(box.x, Math.max(0, box.y - 28), textWidth + 16, 26);
-
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText(labelText, box.x + 8, Math.max(18, box.y - 10));
-
-            setOnboardFaceStatus({ count: 1, text: '✓ Face Verified', isValid: true });
+            setOnboardFaceStatus({ count: 1, text: '✓ Single Face Verified', isValid: true });
           } else if (detectedBoxes.length > 1) {
-            detectedBoxes.forEach(box => {
-              ctx.lineWidth = 3;
-              ctx.strokeStyle = '#ef4444';
-              ctx.strokeRect(box.x, box.y, box.width, box.height);
-            });
-            setOnboardFaceStatus({ count: detectedBoxes.length, text: 'Multiple faces detected! Only 1 face allowed.', isValid: false });
+            setOnboardFaceStatus({ count: detectedBoxes.length, text: '⚠️ Multiple faces detected! Only 1 face allowed.', isValid: false });
           } else {
-            setOnboardFaceStatus({ count: 0, text: 'Searching for face... Keep your head straight', isValid: false });
+            setOnboardFaceStatus({ count: 0, text: 'Searching for face... Keep head straight', isValid: false });
           }
         }
       }
+
 
       animId = requestAnimationFrame(detectFacesLoop);
     };
@@ -1492,8 +1457,8 @@ export default function AttendanceCheckIn() {
                 {/* CLICK TO KNOW DISTANCE IN GOOGLE MAPS */}
                 <a
                   href={userCoords 
-                    ? `https://www.google.com/maps/dir/?api=1&origin=${userCoords.lat},${userCoords.lng}&destination=${OFFICE_LAT},${OFFICE_LNG}`
-                    : `https://www.google.com/maps/dir/?api=1&destination=${OFFICE_LAT},${OFFICE_LNG}`
+                    ? `https://www.google.com/maps/dir/?api=1&origin=${userCoords.lat},${userCoords.lng}&destination=${officeLat},${officeLng}`
+                    : `https://www.google.com/maps/dir/?api=1&destination=${officeLat},${officeLng}`
                   }
                   target="_blank"
                   rel="noopener noreferrer"
@@ -1519,6 +1484,8 @@ export default function AttendanceCheckIn() {
                   <ExternalLink style={{ width: '14px', height: '14px', flexShrink: 0 }} />
                 </a>
               </div>
+
+
             </div>
           </div>
         )}
@@ -1580,9 +1547,11 @@ export default function AttendanceCheckIn() {
                   title="Biometric Punch Verification"
                   description={hasCheckedIn ? "Scan face to check-out for today's session." : "Scan face to check-in for today's session."}
                   buttonText={hasCheckedIn ? "Check Out" : "Check In"}
+                  resetOnCapture={true}
                   onFaceCaptured={(blob) => handlePunchAttendance(blob)} 
                 />
               ) : (
+
                 <div style={{
                   width: '100%',
                   padding: '36px 20px',
