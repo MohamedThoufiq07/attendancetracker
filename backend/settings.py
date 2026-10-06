@@ -112,10 +112,10 @@ TEMPLATES = [
 
 import sys
 # Localhost vs Vercel Environment Check
-IS_VERCEL = bool(os.getenv('VERCEL') or os.getenv('VERCEL_ENV'))
-IS_LOCAL = ('runserver' in sys.argv or 'test' in sys.argv) and not IS_VERCEL
+IS_RUNSERVER = 'runserver' in sys.argv or 'test' in sys.argv
+IS_LOCAL = IS_RUNSERVER and not os.getenv('VERCEL')
 
-if IS_VERCEL:
+if not IS_LOCAL:
     # LIVE VERCEL DEPLOYMENT -> Connects to Neon Cloud PostgreSQL
     if os.getenv('DATABASE_URL'):
         import urllib.parse
