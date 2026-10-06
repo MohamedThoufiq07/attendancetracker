@@ -686,26 +686,10 @@ export default function AttendanceCheckIn() {
         message: `Welcome, ${data.full_name}!\nEmployee ID: ${data.emp_id}\nEmail: ${data.email}`
       });
     } catch (err) {
-      console.warn("Backend registration endpoint warning:", err);
-      // Auto-fallback session creation so registration never fails UI-wise
-      const autoEmpId = getAutoEmpId(regData.full_name) || 'EMP_001';
-      saveUserSession({
-        emp_id: autoEmpId,
-        name: regData.full_name,
-        email: regData.email,
-        role: 'Employee'
-      });
-
-      setRegData({ full_name: '', email: '', password: '', confirm_password: '', designation: '', joining_date: '', phone_number: '' });
-
-      setRegPhoto(null);
-      setRegPhotoPreview(null);
-      setActiveTab('punch');
-
       setNotificationModal({
-        type: 'success',
-        title: 'Registration Successful!',
-        message: `Welcome, ${regData.full_name}!\nEmployee ID: ${autoEmpId}\nEmail: ${regData.email}`
+        type: 'error',
+        title: 'Registration Error',
+        message: err.message
       });
     } finally {
       setIsProcessing(false);
