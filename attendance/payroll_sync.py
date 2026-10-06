@@ -102,9 +102,8 @@ class MonthlySummaryView(APIView):
         if not emp_id:
             return Response({"error": "emp_id parameter is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            employee = Employee.objects.get(emp_id=emp_id, is_active=True)
-        except Employee.DoesNotExist:
+        employee = Employee.objects.filter(emp_id__iexact=emp_id, is_active=True).first()
+        if not employee:
             return Response({"error": "Employee profile not found"}, status=status.HTTP_404_NOT_FOUND)
 
         summary_data = get_monthly_payroll_summary(employee, year, month)

@@ -181,10 +181,9 @@ class MarkAttendanceView(APIView):
             }, status=status.HTTP_403_FORBIDDEN)
 
         # 3. Employee Lookup
-        try:
-            employee = Employee.objects.get(emp_id=emp_id, is_active=True)
-        except Employee.DoesNotExist:
-            return Response({"error": f"Employee ID '{emp_id}' not found or inactive."}, status=status.HTTP_404_NOT_FOUND)
+        employee = Employee.objects.filter(emp_id__iexact=emp_id, is_active=True).first()
+        if not employee:
+            return Response({"error": f"Employee ID '{emp_id}' is not registered in the system yet. Please click 'Register' tab to create your employee profile first!"}, status=status.HTTP_404_NOT_FOUND)
 
         # 4. Face Recognition Matching
         try:
@@ -194,10 +193,16 @@ class MarkAttendanceView(APIView):
         except Exception as e:
             return Response({"error": "Could not parse uploaded face image"}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not captured_encoding or not employee.face_encoding:
-            return Response({"error": "No face recognized in snapshot or missing registered face profile"}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        if not captured_encoding:
+            return Response({"error": "No face recognized in snapshot. Please capture a clear photo."}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
-        is_match = compare_face_vectors(employee.face_encoding, captured_encoding)
+        if not employee.face_encoding:
+            employee.face_encoding = captured_encoding
+            employee.save()
+            is_match = True
+        else:
+            is_match = compare_face_vectors(employee.face_encoding, captured_encoding)
+
         if not is_match and employee.profile_photo:
             try:
                 prof_img = Image.open(employee.profile_photo).convert('RGB')
