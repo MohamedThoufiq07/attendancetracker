@@ -1906,7 +1906,10 @@ export default function AttendanceCheckIn() {
 
                   {/* Monthly Payroll Summary KPI Metrics Cards */}
                   {loadingSummary ? (
-                    <div style={{ padding: '30px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>Loading Monthly Payroll Aggregation...</div>
+                    <div style={{ padding: '30px', textAlign: 'center', color: '#64748b', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                      <RefreshCw style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite', color: '#4f46e5' }} />
+                      Loading Monthly Payroll Aggregation...
+                    </div>
                   ) : monthlySummary ? (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
                       <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
@@ -1967,65 +1970,32 @@ export default function AttendanceCheckIn() {
                           </thead>
                           <tbody>
                             {monthlySummary.day_wise_audit.map((item, idx) => (
-
-                                <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                  <td style={{ padding: '12px 16px', fontWeight: '700', color: '#0f172a' }}>{item.date}</td>
-                                  <td style={{ padding: '12px 16px', color: '#334155' }}>{item.check_in || '--:--'}</td>
-                                  <td style={{ padding: '12px 16px', color: '#334155' }}>{item.check_out || '--:--'}</td>
-                                  <td style={{ padding: '12px 16px', color: '#64748b' }}>{item.duration_hours > 0 ? `${item.duration_hours} hrs` : '--'}</td>
-                                  <td style={{ padding: '12px 16px', color: '#64748b' }}>{item.distance_m ? `${item.distance_m}m` : '--'}</td>
-                                  <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                                    <span style={{
-                                      padding: '4px 10px',
-                                      borderRadius: '20px',
-                                      fontSize: '11px',
-                                      fontWeight: '800',
-                                      backgroundColor: item.status === 'PRESENT' ? '#ECFDF5' : item.status === 'LATE' ? '#FFFBEB' : '#FEF2F2',
-                                      color: item.status === 'PRESENT' ? '#047857' : item.status === 'LATE' ? '#B45309' : '#DC2626',
-                                      border: item.status === 'PRESENT' ? '1px solid #A7F3D0' : item.status === 'LATE' ? '1px solid #FDE68A' : '1px solid #FECACA'
-                                    }}>
-                                      {item.status}
-                                    </span>
-                                  </td>
-                                </tr>
-                              ))}
+                              <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                <td style={{ padding: '12px 16px', fontWeight: '700', color: '#0f172a' }}>{item.date}</td>
+                                <td style={{ padding: '12px 16px', color: '#334155' }}>{item.check_in || '--:--'}</td>
+                                <td style={{ padding: '12px 16px', color: '#334155' }}>{item.check_out || '--:--'}</td>
+                                <td style={{ padding: '12px 16px', color: '#64748b' }}>{item.duration_hours > 0 ? `${item.duration_hours} hrs` : '--'}</td>
+                                <td style={{ padding: '12px 16px', color: '#64748b' }}>{item.distance_m ? `${item.distance_m}m` : '--'}</td>
+                                <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                                  <span style={{
+                                    padding: '4px 10px',
+                                    borderRadius: '20px',
+                                    fontSize: '11px',
+                                    fontWeight: '800',
+                                    backgroundColor: item.status === 'PRESENT' ? '#ECFDF5' : item.status === 'LATE' ? '#FFFBEB' : '#FEF2F2',
+                                    color: item.status === 'PRESENT' ? '#047857' : item.status === 'LATE' ? '#B45309' : '#DC2626',
+                                    border: item.status === 'PRESENT' ? '1px solid #A7F3D0' : item.status === 'LATE' ? '1px solid #FDE68A' : '1px solid #FECACA'
+                                  }}>
+                                    {item.status}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
                           </tbody>
                         </table>
                       </div>
                     </div>
-                  ) : filteredHistory.length === 0 ? (
-                    <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', fontSize: '13px', border: '1px dashed #cbd5e1', borderRadius: '14px' }}>
-                      No attendance records found for your account.
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {filteredHistory.map(item => (
-                        <div key={item.id} style={{ padding: '14px 18px', borderRadius: '14px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-                          <div>
-                            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: '800', color: '#0f172a' }}>{item.employee_name} ({item.emp_id})</h4>
-                            <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
-                              Date: <strong>{item.date}</strong> • Check-In: <strong style={{ color: '#0f172a' }}>{item.check_in || 'N/A'}</strong>
-                            </p>
-                          </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                            <span style={{
-                              padding: '4px 12px',
-                              borderRadius: '20px',
-                              fontSize: '11px',
-                              fontWeight: '800',
-                              backgroundColor: item.status === 'PRESENT' ? '#ECFDF5' : '#FFFBEB',
-                              color: item.status === 'PRESENT' ? '#047857' : '#B45309',
-                              border: item.status === 'PRESENT' ? '1px solid #A7F3D0' : '1px solid #FDE68A'
-                            }}>
-                              {item.status}
-                            </span>
-                            <span style={{ fontSize: '11px', color: '#94a3b8' }}>{item.distance}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  ) : null}
                 </>
               )}
             </div>
