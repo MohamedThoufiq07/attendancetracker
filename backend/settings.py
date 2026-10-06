@@ -105,39 +105,46 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'backend.wsgi.application'
+IS_VERCEL = os.getenv('VERCEL') is not None or not os.access(BASE_DIR, os.W_OK)
 
-if os.getenv('DATABASE_URL'):
-    import urllib.parse
-    url = urllib.parse.urlparse(os.getenv('DATABASE_URL'))
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': url.path[1:],
-            'USER': url.username,
-            'PASSWORD': url.password,
-            'HOST': url.hostname,
-            'PORT': url.port or 5432,
-            'OPTIONS': {
-                'sslmode': 'require',
+try:
+    if os.getenv('DATABASE_URL'):
+        import urllib.parse
+        url = urllib.parse.urlparse(os.getenv('DATABASE_URL'))
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': url.path[1:],
+                'USER': url.username,
+                'PASSWORD': url.password,
+                'HOST': url.hostname,
+                'PORT': url.port or 5432,
+                'OPTIONS': {
+                    'sslmode': 'require',
+                }
             }
         }
-    }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.getenv('DB_NAME', 'neondb'),
-            'USER': os.getenv('DB_USER', 'neondb_owner'),
-            'PASSWORD': os.getenv('DB_PASSWORD', 'npg_WLiVXy8Kv6Us'),
-            'HOST': os.getenv('DB_HOST', 'ep-cool-king-b4i1ls9g-pooler.c-6.us-east-2.aws.neon.tech'),
-            'PORT': os.getenv('DB_PORT', '5432'),
-            'OPTIONS': {
-                'sslmode': 'require',
+    else:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': os.getenv('DB_NAME', 'neondb'),
+                'USER': os.getenv('DB_USER', 'neondb_owner'),
+                'PASSWORD': os.getenv('DB_PASSWORD', 'npg_WLiVXy8Kv6Us'),
+                'HOST': os.getenv('DB_HOST', 'ep-cool-king-b4i1ls9g-pooler.c-6.us-east-2.aws.neon.tech'),
+                'PORT': os.getenv('DB_PORT', '5432'),
+                'OPTIONS': {
+                    'sslmode': 'require',
+                }
             }
         }
+except Exception:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': Path('/tmp/db.sqlite3') if IS_VERCEL else BASE_DIR / 'db.sqlite3',
+        }
     }
-
 
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -170,7 +177,7 @@ except ImportError:
     pass
 
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = Path('/tmp/media') if IS_VERCEL else BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
