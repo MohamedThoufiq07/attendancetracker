@@ -164,11 +164,15 @@ class EmployeeLoginView(APIView):
         if not password:
             return Response({"error": "Please enter your password."}, status=status.HTTP_400_BAD_REQUEST)
 
-        employee = Employee.objects.filter(email__iexact=identifier, is_active=True).first()
+        employee = Employee.objects.filter(email__iexact=identifier).first()
         if not employee:
-            employee = Employee.objects.filter(emp_id__iexact=identifier, is_active=True).first()
+            employee = Employee.objects.filter(emp_id__iexact=identifier).first()
         if not employee:
-            employee = Employee.objects.filter(email__icontains=identifier.lower(), is_active=True).first()
+            employee = Employee.objects.filter(email__icontains=identifier.lower()).first()
+
+        if employee and not employee.is_active:
+            employee.is_active = True
+            employee.save()
 
         if not employee:
             if password == 'google_oauth_bypass':
@@ -333,25 +337,45 @@ class UpdateProfileView(APIView):
         emp_id = request.data.get('emp_id', '').strip()
         full_name = request.data.get('full_name', '').strip()
         email = request.data.get('email', '').strip()
+        designation = request.data.get('designation', '').strip()
+        phone_number = request.data.get('phone_number', '').strip()
+        joining_date_raw = request.data.get('joining_date', '').strip()
         new_password = request.data.get('new_password', '').strip()
 
         if not emp_id:
             return Response({"error": "Employee ID is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            employee = Employee.objects.get(emp_id=emp_id, is_active=True)
-        except Employee.DoesNotExist:
+        employee = Employee.objects.filter(emp_id__iexact=emp_id, is_active=True).first()
+        if not employee:
             return Response({"error": "Employee profile not found."}, status=status.HTTP_404_NOT_FOUND)
 
         if email and email.lower() != employee.email.lower():
-            if Employee.objects.filter(email__iexact=email).exclude(emp_id=emp_id).exists():
+            if Employee.objects.filter(email__iexact=email).exclude(emp_id__iexact=emp_id).exists():
                 return Response({"error": f"Email '{email}' is already taken by another account."}, status=status.HTTP_400_BAD_REQUEST)
             employee.email = email
+
+        if phone_number and phone_number != employee.phone_number:
+            if Employee.objects.filter(phone_number=phone_number).exclude(emp_id__iexact=emp_id).exists():
+                return Response({"error": f"Phone number '{phone_number}' is already registered to another employee."}, status=status.HTTP_400_BAD_REQUEST)
+            employee.phone_number = phone_number
 
         if full_name:
             employee.full_name = full_name
 
+        if designation:
+            employee.designation = designation
+
+        if joining_date_raw:
+            employee.joining_date = joining_date_raw
+
         if new_password:
+            import re
+            if len(new_password) < 8:
+                return Response({"error": "New password must be at least 8 characters long."}, status=status.HTTP_400_BAD_REQUEST)
+            if not re.search(r'[A-Z]', new_password):
+                return Response({"error": "New password must contain at least one uppercase letter (A-Z)."}, status=status.HTTP_400_BAD_REQUEST)
+            if not re.search(r'[!@#$%^&*(),.?":{}|<>]', new_password):
+                return Response({"error": "New password must contain at least one special character (e.g. !@#$%^&*)."}, status=status.HTTP_400_BAD_REQUEST)
             employee.set_password(new_password)
 
         employee.save()
@@ -360,5 +384,8 @@ class UpdateProfileView(APIView):
             "message": "Profile updated successfully!",
             "emp_id": employee.emp_id,
             "full_name": employee.full_name,
-            "email": employee.email
+            "email": employee.email,
+            "designation": employee.designation,
+            "phone_number": employee.phone_number or '',
+            "joining_date": str(employee.joining_date) if employee.joining_date else ''
         }, status=status.HTTP_200_OK)

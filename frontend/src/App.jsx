@@ -171,7 +171,7 @@ export default function AttendanceCheckIn() {
   // User Profile & Dropdown menu state
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
-  const [profileForm, setProfileForm] = useState({ full_name: '', email: '', new_password: '' });
+  const [profileForm, setProfileForm] = useState({ full_name: '', email: '', designation: '', phone_number: '', joining_date: '', new_password: '' });
   const [showNewPassword, setShowNewPassword] = useState(false);
 
   // Google OAuth Modal state
@@ -767,6 +767,9 @@ export default function AttendanceCheckIn() {
           emp_id: currentUser.emp_id,
           full_name: profileForm.full_name,
           email: profileForm.email,
+          designation: profileForm.designation,
+          phone_number: profileForm.phone_number,
+          joining_date: profileForm.joining_date,
           new_password: profileForm.new_password
         })
       });
@@ -776,7 +779,10 @@ export default function AttendanceCheckIn() {
       saveUserSession({
         ...currentUser,
         name: data.full_name,
-        email: data.email
+        email: data.email,
+        designation: data.designation,
+        phone_number: data.phone_number,
+        joining_date: data.joining_date
       });
 
       setProfileModalOpen(false);
@@ -1164,7 +1170,14 @@ export default function AttendanceCheckIn() {
                     <button
                       onClick={() => {
                         setUserMenuOpen(false);
-                        setProfileForm({ full_name: currentUser.name || '', email: currentUser.email || '', new_password: '' });
+                        setProfileForm({
+                          full_name: currentUser.name || currentUser.full_name || '',
+                          email: currentUser.email || '',
+                          designation: currentUser.designation || '',
+                          phone_number: currentUser.phone_number || '',
+                          joining_date: currentUser.joining_date || '',
+                          new_password: ''
+                        });
                         setProfileModalOpen(true);
                       }}
                       style={{
@@ -2352,6 +2365,38 @@ export default function AttendanceCheckIn() {
                   required 
                   value={profileForm.email} 
                   onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })} 
+                  style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} 
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Designation</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. Software Engineer" 
+                  value={profileForm.designation} 
+                  onChange={(e) => setProfileForm({ ...profileForm, designation: e.target.value })} 
+                  style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} 
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Phone Number</label>
+                <input 
+                  type="tel" 
+                  placeholder="e.g. 9876543210" 
+                  value={profileForm.phone_number} 
+                  onChange={(e) => setProfileForm({ ...profileForm, phone_number: e.target.value })} 
+                  style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} 
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Joining Date</label>
+                <input 
+                  type="date" 
+                  value={profileForm.joining_date} 
+                  onChange={(e) => setProfileForm({ ...profileForm, joining_date: e.target.value })} 
                   style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} 
                 />
               </div>
