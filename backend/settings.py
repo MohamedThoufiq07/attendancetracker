@@ -106,22 +106,34 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'backend.wsgi.application'
 
-if os.getenv('DB_HOST') and os.getenv('DB_HOST') not in ('localhost', '127.0.0.1'):
+if os.getenv('DATABASE_URL'):
+    import urllib.parse
+    url = urllib.parse.urlparse(os.getenv('DATABASE_URL'))
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.getenv('DB_NAME', 'attendancetracker'),
-            'USER': os.getenv('DB_USER', 'postgres'),
-            'PASSWORD': os.getenv('DB_PASSWORD', ''),
-            'HOST': os.getenv('DB_HOST'),
-            'PORT': os.getenv('DB_PORT', '5432'),
+            'NAME': url.path[1:],
+            'USER': url.username,
+            'PASSWORD': url.password,
+            'HOST': url.hostname,
+            'PORT': url.port or 5432,
+            'OPTIONS': {
+                'sslmode': 'require',
+            }
         }
     }
 else:
     DATABASES = {
         'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('DB_NAME', 'neondb'),
+            'USER': os.getenv('DB_USER', 'neondb_owner'),
+            'PASSWORD': os.getenv('DB_PASSWORD', 'npg_WLiVXy8Kv6Us'),
+            'HOST': os.getenv('DB_HOST', 'ep-cool-king-b4i1ls9g-pooler.c-6.us-east-2.aws.neon.tech'),
+            'PORT': os.getenv('DB_PORT', '5432'),
+            'OPTIONS': {
+                'sslmode': 'require',
+            }
         }
     }
 
