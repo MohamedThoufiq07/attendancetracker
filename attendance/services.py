@@ -2,9 +2,10 @@ import math
 from datetime import time, datetime
 import numpy as np
 
-# EXACT TESTING OFFICE COORDINATES (Updated from user's current location: 8.7897224, 78.1349328)
-ZIGMA_OFFICE_LAT = 8.7897224
-ZIGMA_OFFICE_LNG = 78.1349328
+# EXACT TESTING OFFICE COORDINATES (Updated from user's current location: 8.788711, 78.13152)
+ZIGMA_OFFICE_LAT = 8.788711
+ZIGMA_OFFICE_LNG = 78.13152
+
 ALLOWED_RADIUS_METERS = 300.0
 CUTOFF_TIME = time(10, 0, 0)
 

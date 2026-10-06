@@ -36,16 +36,18 @@ import {
 } from 'lucide-react';
 
 // DYNAMIC BACKEND API BASE URL (Supports Vercel/Netlify Deployment)
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const rawApiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const API_BASE_URL = rawApiUrl.trim().replace(/\/+$/, '');
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '299933614033-8hirtt0ghcikkk1cuq857v6vigsg3441.apps.googleusercontent.com';
 
 
 
 
-// EXACT TESTING LOCATION CONSTANTS (Updated from user's current location: 8.7897224, 78.1349328)
-const OFFICE_LAT = 8.7897224;
-const OFFICE_LNG = 78.1349328;
+// EXACT TESTING LOCATION CONSTANTS (Updated from user's current location: 8.788711, 78.13152)
+const OFFICE_LAT = 8.788711;
+const OFFICE_LNG = 78.13152;
 const ALLOWED_RADIUS = 300; // meters (Expanded testing radius)
+
 
 const calculateHaversine = (lat1, lon1, lat2, lon2) => {
   const R = 6371000;
@@ -220,31 +222,36 @@ export default function AttendanceCheckIn() {
     return () => clearInterval(timer);
   }, []);
 
+  const gsiInitializedRef = useRef(false);
+
   // Initialize Google Identity Services (GSI) & Render official Google Button statically
   useEffect(() => {
     const initGoogleGSI = () => {
       if (window.google?.accounts?.id) {
         try {
-          window.google.accounts.id.initialize({
-            client_id: GOOGLE_CLIENT_ID,
-            callback: (response) => {
-              if (response && response.credential) {
-                try {
-                  const base64Url = response.credential.split('.')[1];
-                  const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-                  const jsonPayload = decodeURIComponent(
-                    atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
-                  );
-                  const payload = JSON.parse(jsonPayload);
-                  if (payload && payload.email) {
-                    executeGoogleAuth(payload.email);
+          if (!gsiInitializedRef.current) {
+            window.google.accounts.id.initialize({
+              client_id: GOOGLE_CLIENT_ID,
+              callback: (response) => {
+                if (response && response.credential) {
+                  try {
+                    const base64Url = response.credential.split('.')[1];
+                    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                    const jsonPayload = decodeURIComponent(
+                      atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
+                    );
+                    const payload = JSON.parse(jsonPayload);
+                    if (payload && payload.email) {
+                      executeGoogleAuth(payload.email);
+                    }
+                  } catch (e) {
+                    console.error("Error parsing Google OAuth JWT payload:", e);
                   }
-                } catch (e) {
-                  console.error("Error parsing Google OAuth JWT payload:", e);
                 }
               }
-            }
-          });
+            });
+            gsiInitializedRef.current = true;
+          }
 
           // Render official Google button statically only if container is empty
           const container = document.getElementById('googleSignInBtnDiv');
@@ -264,9 +271,8 @@ export default function AttendanceCheckIn() {
     };
 
     initGoogleGSI();
-    const timeout = setTimeout(initGoogleGSI, 500);
-    return () => clearTimeout(timeout);
   }, [authMode]);
+
 
 
 
