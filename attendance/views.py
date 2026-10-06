@@ -115,9 +115,9 @@ class EmployeeRegisterView(APIView):
         except Exception as e:
             return Response({"error": f"Failed to process face image: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Prevent duplicate face registration across active employees
+        # Prevent duplicate face registration across active employees (excluding same emp_id)
         if encoding:
-            existing_employees = Employee.objects.filter(is_active=True).exclude(face_encoding__isnull=True)
+            existing_employees = Employee.objects.filter(is_active=True).exclude(emp_id__iexact=emp_id).exclude(face_encoding__isnull=True)
             for existing_emp in existing_employees:
                 if existing_emp.face_encoding and len(existing_emp.face_encoding) > 0:
                     if compare_face_vectors(existing_emp.face_encoding, encoding):
