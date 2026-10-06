@@ -36,9 +36,14 @@ import {
 } from 'lucide-react';
 
 // DYNAMIC BACKEND API BASE URL (Supports Vercel/Netlify Deployment)
-const rawApiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const defaultProdUrl = 'https://attendancetracker-backend.vercel.app';
+const rawApiUrl = import.meta.env.VITE_API_URL || 
+  (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://127.0.0.1:8000'
+    : defaultProdUrl);
 const API_BASE_URL = rawApiUrl.trim().replace(/\/+$/, '');
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '299933614033-8hirtt0ghcikkk1cuq857v6vigsg3441.apps.googleusercontent.com';
+
 
 
 
