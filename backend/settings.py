@@ -111,10 +111,12 @@ TEMPLATES = [
 ]
 
 import sys
-IS_LOCAL = ('runserver' in sys.argv or 'test' in sys.argv) and not os.getenv('VERCEL')
+# Localhost vs Vercel Environment Check
+IS_VERCEL = bool(os.getenv('VERCEL') or os.getenv('VERCEL_ENV'))
+IS_LOCAL = ('runserver' in sys.argv or 'test' in sys.argv) and not IS_VERCEL
 
-if not IS_LOCAL:
-    # VERCEL DEPLOYMENT -> Connect to Neon Cloud PostgreSQL
+if IS_VERCEL:
+    # LIVE VERCEL DEPLOYMENT -> Connects to Neon Cloud PostgreSQL
     if os.getenv('DATABASE_URL'):
         import urllib.parse
         url = urllib.parse.urlparse(os.getenv('DATABASE_URL'))
@@ -135,26 +137,26 @@ if not IS_LOCAL:
         DATABASES = {
             'default': {
                 'ENGINE': 'django.db.backends.postgresql',
-                'NAME': os.getenv('DB_NAME', 'neondb'),
-                'USER': os.getenv('DB_USER', 'neondb_owner'),
-                'PASSWORD': os.getenv('DB_PASSWORD', 'npg_WLiVXy8Kv6Us'),
-                'HOST': os.getenv('DB_HOST', 'ep-cool-king-b4i1ls9g-pooler.c-6.us-east-2.aws.neon.tech'),
-                'PORT': os.getenv('DB_PORT', '5432'),
+                'NAME': 'neondb',
+                'USER': 'neondb_owner',
+                'PASSWORD': 'npg_WLiVXy8Kv6Us',
+                'HOST': 'ep-cool-king-b4i1ls9g-pooler.c-6.us-east-2.aws.neon.tech',
+                'PORT': '5432',
                 'OPTIONS': {
                     'sslmode': 'require',
                 }
             }
         }
 else:
-    # LOCALHOST ENVIRONMENT -> Connect to Local PostgreSQL
+    # LOCALHOST DEVELOPMENT -> Connects to Local PostgreSQL (localhost:5432)
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.getenv('DB_NAME', 'attendancetracker'),
-            'USER': os.getenv('DB_USER', 'postgres'),
-            'PASSWORD': os.getenv('DB_PASSWORD', 'thoufiq'),
-            'HOST': os.getenv('DB_HOST', 'localhost'),
-            'PORT': os.getenv('DB_PORT', '5432'),
+            'NAME': 'attendancetracker',
+            'USER': 'postgres',
+            'PASSWORD': 'thoufiq',
+            'HOST': 'localhost',
+            'PORT': '5432',
         }
     }
 
