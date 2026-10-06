@@ -1,6 +1,9 @@
 import math
 from datetime import time, datetime
-import numpy as np
+try:
+    import numpy as np
+except Exception:
+    np = None
 
 # EXACT TESTING OFFICE COORDINATES (Updated from user's specified office location: 8.7892563, 78.117146)
 ZIGMA_OFFICE_LAT = 8.7892563

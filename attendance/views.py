@@ -1,6 +1,14 @@
-import numpy as np
+try:
+    import numpy as np
+except Exception:
+    np = None
+
 from datetime import time
-from PIL import Image
+
+try:
+    from PIL import Image
+except Exception:
+    Image = None
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
