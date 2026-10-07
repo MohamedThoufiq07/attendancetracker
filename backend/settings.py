@@ -112,6 +112,8 @@ CORS_ALLOW_METHODS = [
 
 ROOT_URLCONF = 'backend.urls'
 
+WSGI_APPLICATION = 'backend.wsgi.application'
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
