@@ -112,8 +112,8 @@ TEMPLATES = [
 
 import sys
 # Localhost vs Vercel Environment Check
-IS_RUNSERVER = 'runserver' in sys.argv or 'test' in sys.argv
-IS_LOCAL = IS_RUNSERVER and not os.getenv('VERCEL')
+# On local machine (no VERCEL env var), always use local PostgreSQL
+IS_LOCAL = not os.getenv('VERCEL')
 
 if not IS_LOCAL:
     # LIVE VERCEL DEPLOYMENT -> Connects to Neon Cloud PostgreSQL

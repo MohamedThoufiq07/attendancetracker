@@ -33,7 +33,11 @@ import {
   Edit3,
   FileText,
   Menu,
-  X
+  X,
+  Sun,
+  Moon,
+  Bell,
+  Save
 } from 'lucide-react';
 
 // DYNAMIC BACKEND API BASE URL (Supports Vercel/Netlify Deployment)
@@ -137,14 +141,61 @@ export default function AttendanceCheckIn() {
 
   
   // Navigation
-  const [activeTab, setActiveTab] = useState('punch'); // 'punch' | 'onboard' | 'history' | 'leave'
+  const [activeTab, setActiveTab] = useState('punch'); // 'punch' | 'onboard' | 'history' | 'leave' | 'status'
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [notifMenuOpen, setNotifMenuOpen] = useState(false);
+
+  // Custom Dropdown Menus States
+  const [monthDropdownOpen, setMonthDropdownOpen] = useState(false);
+  const [leaveTypeDropdownOpen, setLeaveTypeDropdownOpen] = useState(false);
+  const [hoursDropdownOpen, setHoursDropdownOpen] = useState(false);
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (!e.target.closest('[data-custom-dropdown]')) {
+        setMonthDropdownOpen(false);
+        setLeaveTypeDropdownOpen(false);
+        setHoursDropdownOpen(false);
+      }
+    };
+    document.addEventListener('click', handleOutsideClick);
+    return () => document.removeEventListener('click', handleOutsideClick);
+  }, []);
+  // Helper function to format full request type label
+  const getRequestTypeLabel = (type) => {
+    switch (type) {
+      case 'CASUAL': return 'Casual Leave';
+      case 'SICK': return 'Sick Leave';
+      case 'HALF_DAY': return 'Half Day Leave';
+      case 'PERMISSION': return 'Permission Request';
+      default: return type || 'Leave Request';
+    }
+  };
+  // Pay Slip Pro pitch-black dark theme configuration
+  const theme = {
+    bg: isDarkMode ? '#09090b' : '#f8fafc',
+    headerBg: isDarkMode ? '#09090b' : '#ffffff',
+    cardBg: isDarkMode ? '#121215' : '#ffffff',
+    cardInnerBg: isDarkMode ? '#18181b' : '#f8fafc',
+    border: isDarkMode ? '#27272a' : '#e2e8f0',
+    inputBorder: isDarkMode ? '#27272a' : '#cbd5e1',
+    inputBg: isDarkMode ? '#18181b' : '#ffffff',
+    textPrimary: isDarkMode ? '#f4f4f5' : '#0f172a',
+    textSecondary: isDarkMode ? '#a1a1aa' : '#64748b',
+    textMuted: isDarkMode ? '#71717a' : '#94a3b8',
+    tableHeaderBg: isDarkMode ? '#18181b' : '#f1f5f9',
+    tableRowBorder: isDarkMode ? '#1f1f23' : '#f1f5f9',
+    mobileNavBg: isDarkMode ? 'rgba(9, 9, 11, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+  };
 
   // Leave & Permission states
   const [leaveForm, setLeaveForm] = useState({
     request_type: 'CASUAL',
     start_date: '',
     end_date: '',
+    duration_hours: '2',
     reason: ''
   });
   const [myLeavesList, setMyLeavesList] = useState([]);
@@ -179,6 +230,10 @@ export default function AttendanceCheckIn() {
     setIsProcessing(true);
 
     try {
+      const isPermission = leaveForm.request_type === 'PERMISSION';
+      const isHalfDay = leaveForm.request_type === 'HALF_DAY';
+      const isSingleDate = isPermission || isHalfDay;
+
       const res = await fetch(`${API_BASE_URL}/api/attendance/leave-request/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -186,23 +241,29 @@ export default function AttendanceCheckIn() {
           emp_id: currentUser.emp_id,
           request_type: leaveForm.request_type,
           start_date: leaveForm.start_date,
-          end_date: leaveForm.end_date,
+          end_date: isSingleDate ? leaveForm.start_date : leaveForm.end_date,
+          duration_hours: isPermission ? leaveForm.duration_hours : null,
           reason: leaveForm.reason
         })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to submit leave request');
+      if (!res.ok) throw new Error(data.error || 'Failed to submit request');
 
       setNotificationModal({
         type: 'success',
         title: 'Request Submitted! 📝',
-        message: `Your ${leaveForm.request_type} request from ${leaveForm.start_date} to ${leaveForm.end_date} has been submitted for approval.`
+        message: isPermission
+          ? `Your ${leaveForm.duration_hours}-hour permission request for ${leaveForm.start_date} has been submitted for approval.`
+          : isHalfDay
+          ? `Your Half Day Leave request for ${leaveForm.start_date} has been submitted for approval.`
+          : `Your ${leaveForm.request_type} request from ${leaveForm.start_date} to ${leaveForm.end_date} has been submitted for approval.`
       });
 
       setLeaveForm({
         request_type: 'CASUAL',
         start_date: '',
         end_date: '',
+        duration_hours: '2',
         reason: ''
       });
 
@@ -1011,6 +1072,16 @@ export default function AttendanceCheckIn() {
       const data = await res.json();
       const list = Array.isArray(data) ? data : [];
       setHistoryList(list);
+
+      // Automatically sync today's check-in / check-out status
+      const todayStr = new Date().toISOString().split('T')[0];
+      const todayRecord = list.find(r => r.date === todayStr);
+      if (todayRecord && todayRecord.check_in) {
+        setHasCheckedIn(!todayRecord.check_out);
+      } else {
+        setHasCheckedIn(false);
+      }
+
       return list;
     } catch (err) {
       setHistoryList([]);
@@ -1075,7 +1146,7 @@ export default function AttendanceCheckIn() {
   };
 
   useEffect(() => {
-    if (activeTab === 'leave' && currentUser) {
+    if ((activeTab === 'leave' || activeTab === 'status') && currentUser) {
       fetchMyLeaves();
     } else if (activeTab === 'history' && currentUser) {
       fetchHistory().then((records) => {
@@ -1098,8 +1169,8 @@ export default function AttendanceCheckIn() {
   return (
     <div style={{
       minHeight: '100vh',
-      backgroundColor: '#f8fafc',
-      color: '#0f172a',
+      backgroundColor: theme.bg,
+      color: theme.textPrimary,
       fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
       display: 'flex',
       flexDirection: 'column',
@@ -1107,13 +1178,11 @@ export default function AttendanceCheckIn() {
     }}>
       
       {/* TOP NAV BAR */}
-      <header style={{
-        width: '100%',
-        backgroundColor: '#ffffff',
-        borderBottom: '1px solid #e2e8f0',
-        padding: '12px 24px',
+      <header className="w-full px-3 sm:px-6 py-2.5 sm:py-3" style={{
+        backgroundColor: theme.headerBg,
+        borderBottom: `1px solid ${theme.border}`,
         boxSizing: 'border-box',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+        boxShadow: isDarkMode ? 'none' : '0 1px 3px rgba(0,0,0,0.05)',
         position: 'sticky',
         top: 0,
         zIndex: 50
@@ -1123,26 +1192,27 @@ export default function AttendanceCheckIn() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '12px'
+          gap: '8px'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* BRAND LOGO & TITLE */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
             <img 
               src="/zigma_logo_fixed.webp" 
               alt="Zigmaa Tech Logo" 
               style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '12px',
+                width: '34px',
+                height: '34px',
+                borderRadius: '8px',
                 objectFit: 'contain',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                flexShrink: 0,
+                boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
               }} 
             />
-            <div>
-              <h1 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <h1 style={{ margin: 0, fontSize: '14px', fontWeight: '800', color: theme.textPrimary, letterSpacing: '-0.2px', whiteSpace: 'nowrap' }}>
                 ZIGMAA TECH
               </h1>
-              <p style={{ margin: 0, fontSize: '11px', fontWeight: '600', color: '#6366f1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              <p className="hidden sm:block" style={{ margin: 0, fontSize: '10px', fontWeight: '600', color: isDarkMode ? '#818cf8' : '#6366f1', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>
                 Attendance & Biometric Portal
               </p>
             </div>
@@ -1162,8 +1232,8 @@ export default function AttendanceCheckIn() {
                 gap: '6px',
                 fontSize: '13px',
                 fontWeight: '700',
-                backgroundColor: activeTab === 'punch' ? '#EEF2FF' : 'transparent',
-                color: activeTab === 'punch' ? '#4f46e5' : '#475569',
+                backgroundColor: activeTab === 'punch' ? (isDarkMode ? '#27272a' : '#EEF2FF') : 'transparent',
+                color: activeTab === 'punch' ? (isDarkMode ? '#818cf8' : '#4f46e5') : theme.textSecondary,
               }}
             >
               <ShieldCheck style={{ width: '16px', height: '16px' }} />
@@ -1182,8 +1252,8 @@ export default function AttendanceCheckIn() {
                 gap: '6px',
                 fontSize: '13px',
                 fontWeight: '700',
-                backgroundColor: activeTab === 'history' ? '#EEF2FF' : 'transparent',
-                color: activeTab === 'history' ? '#4f46e5' : '#475569',
+                backgroundColor: activeTab === 'history' ? (isDarkMode ? '#27272a' : '#EEF2FF') : 'transparent',
+                color: activeTab === 'history' ? (isDarkMode ? '#818cf8' : '#4f46e5') : theme.textSecondary,
               }}
             >
               <History style={{ width: '16px', height: '16px' }} />
@@ -1202,8 +1272,8 @@ export default function AttendanceCheckIn() {
                 gap: '6px',
                 fontSize: '13px',
                 fontWeight: '700',
-                backgroundColor: activeTab === 'leave' ? '#EEF2FF' : 'transparent',
-                color: activeTab === 'leave' ? '#4f46e5' : '#475569',
+                backgroundColor: activeTab === 'leave' ? (isDarkMode ? '#27272a' : '#EEF2FF') : 'transparent',
+                color: activeTab === 'leave' ? (isDarkMode ? '#818cf8' : '#4f46e5') : theme.textSecondary,
               }}
             >
               <FileText style={{ width: '16px', height: '16px' }} />
@@ -1211,8 +1281,125 @@ export default function AttendanceCheckIn() {
             </button>
           </div>
 
-          {/* DESKTOP USER CONTROLS */}
-          <div className="hidden md:flex" style={{ alignItems: 'center', gap: '10px' }}>
+          {/* DESKTOP & MOBILE USER PROFILE & HEADER ICONS (Always on top right) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            {/* DARK / LIGHT MODE TOGGLE ICON BUTTON */}
+            <button
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
+                border: `1px solid ${theme.border}`,
+                backgroundColor: theme.inputBg,
+                color: isDarkMode ? '#fbbf24' : '#64748b',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: isDarkMode ? 'none' : '0 1px 3px rgba(0,0,0,0.05)',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {isDarkMode ? <Sun style={{ width: '18px', height: '18px' }} /> : <Moon style={{ width: '18px', height: '18px' }} />}
+            </button>
+
+            {/* NOTIFICATION BELL ICON BUTTON */}
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setNotifMenuOpen(!notifMenuOpen)}
+                title="Notifications"
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '10px',
+                  border: `1px solid ${theme.border}`,
+                  backgroundColor: theme.inputBg,
+                  color: theme.textSecondary,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  boxShadow: isDarkMode ? 'none' : '0 1px 3px rgba(0,0,0,0.05)',
+                  position: 'relative'
+                }}
+              >
+                <Bell style={{ width: '18px', height: '18px' }} />
+                {myLeavesList.length > 0 && (
+                  <span style={{
+                    position: 'absolute',
+                    top: '6px',
+                    right: '6px',
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: '#ef4444'
+                  }} />
+                )}
+              </button>
+
+              {/* NOTIFICATION POPUP MENU */}
+              {notifMenuOpen && (
+                <div style={{
+                  position: 'absolute',
+                  right: '-40px',
+                  top: 'calc(100% + 8px)',
+                  width: 'min(310px, calc(100vw - 32px))',
+                  backgroundColor: theme.cardBg,
+                  color: theme.textPrimary,
+                  borderRadius: '16px',
+                  border: `1px solid ${theme.border}`,
+                  boxShadow: isDarkMode ? '0 12px 36px rgba(0,0,0,0.7)' : '0 12px 28px -4px rgba(0,0,0,0.15)',
+                  zIndex: 100,
+                  overflow: 'hidden',
+                  padding: '14px',
+                  boxSizing: 'border-box'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <h4 style={{ margin: 0, fontSize: '13px', fontWeight: '800' }}>Notifications</h4>
+                    <span style={{ fontSize: '10px', fontWeight: '800', backgroundColor: isDarkMode ? '#27272a' : '#EEF2FF', color: isDarkMode ? '#818cf8' : '#4F46E5', padding: '2px 8px', borderRadius: '10px' }}>
+                      {myLeavesList.length} updates
+                    </span>
+                  </div>
+                  <div style={{ maxHeight: '240px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {myLeavesList.length === 0 ? (
+                      <div style={{ fontSize: '12px', color: theme.textMuted, textAlign: 'center', padding: '16px' }}>No notifications yet</div>
+                    ) : (
+                      myLeavesList.slice(0, 5).map((item) => (
+                        <div key={item.id} style={{ fontSize: '12px', padding: '10px 12px', borderRadius: '10px', backgroundColor: theme.cardInnerBg, border: `1px solid ${theme.border}` }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+                            <span style={{ fontWeight: '800', color: theme.textPrimary, fontSize: '12px' }}>
+                              {getRequestTypeLabel(item.request_type)}
+                            </span>
+                            <span style={{
+                              fontSize: '10px',
+                              fontWeight: '800',
+                              padding: '2px 6px',
+                              borderRadius: '8px',
+                              backgroundColor: item.status === 'APPROVED' ? (isDarkMode ? '#064e3b' : '#ECFDF5') : item.status === 'REJECTED' ? (isDarkMode ? '#7f1d1d' : '#FEF2F2') : (isDarkMode ? '#451a03' : '#FFFBEB'),
+                              color: item.status === 'APPROVED' ? (isDarkMode ? '#a7f3d0' : '#047857') : item.status === 'REJECTED' ? (isDarkMode ? '#fca5a5' : '#DC2626') : (isDarkMode ? '#fde68a' : '#B45309'),
+                              border: item.status === 'APPROVED' ? '1px solid #10b981' : item.status === 'REJECTED' ? '1px solid #ef4444' : '1px solid #f59e0b'
+                            }}>
+                              {item.status}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '11px', color: theme.textSecondary, fontWeight: '600' }}>
+                            {item.request_type === 'PERMISSION' ? (
+                              <>⏱️ Date: {item.start_date} ({item.duration_hours || 2} hrs)</>
+                            ) : item.request_type === 'HALF_DAY' ? (
+                              <>🌗 Date: {item.start_date} (Half Day)</>
+                            ) : (
+                              <>📅 {item.start_date} to {item.end_date}</>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             {currentUser ? (
               <div style={{ position: 'relative' }}>
                 <button
@@ -1220,21 +1407,23 @@ export default function AttendanceCheckIn() {
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '8px',
-                    padding: '8px 14px',
-                    borderRadius: '12px',
-                    border: '1px solid #cbd5e1',
-                    backgroundColor: '#ffffff',
-                    color: '#0f172a',
-                    fontSize: '13px',
+                    gap: '6px',
+                    padding: '6px 10px',
+                    borderRadius: '10px',
+                    border: `1px solid ${theme.border}`,
+                    backgroundColor: theme.inputBg,
+                    color: theme.textPrimary,
+                    fontSize: '12px',
                     fontWeight: '800',
                     cursor: 'pointer',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                    boxShadow: isDarkMode ? 'none' : '0 1px 3px rgba(0,0,0,0.05)'
                   }}
                 >
-                  <User style={{ width: '16px', height: '16px', color: '#4f46e5' }} />
-                  <span>{currentUser.name}</span>
-                  <ChevronDown style={{ width: '14px', height: '14px', color: '#64748b' }} />
+                  <User style={{ width: '15px', height: '15px', color: isDarkMode ? '#818cf8' : '#4f46e5', flexShrink: 0 }} />
+                  {/* On mobile show first name cleanly; on desktop show full name */}
+                  <span className="hidden sm:inline whitespace-nowrap">{currentUser.name}</span>
+                  <span className="sm:hidden whitespace-nowrap">{currentUser.name ? currentUser.name.split(' ')[0] : 'Profile'}</span>
+                  <ChevronDown style={{ width: '13px', height: '13px', color: theme.textSecondary, flexShrink: 0 }} />
                 </button>
 
                 {/* USER DROPDOWN MENU */}
@@ -1244,10 +1433,10 @@ export default function AttendanceCheckIn() {
                     right: 0,
                     top: 'calc(100% + 8px)',
                     width: '200px',
-                    backgroundColor: '#ffffff',
+                    backgroundColor: theme.cardBg,
                     borderRadius: '16px',
-                    border: '1px solid #e2e8f0',
-                    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)',
+                    border: `1px solid ${theme.border}`,
+                    boxShadow: isDarkMode ? '0 10px 30px rgba(0,0,0,0.5)' : '0 10px 25px -5px rgba(0,0,0,0.1)',
                     zIndex: 100,
                     overflow: 'hidden',
                     padding: '6px'
@@ -1263,7 +1452,7 @@ export default function AttendanceCheckIn() {
                           joining_date: currentUser.joining_date || '',
                           new_password: ''
                         });
-                        setProfileModalOpen(true);
+                        setActiveTab('profile');
                       }}
                       style={{
                         width: '100%',
@@ -1273,7 +1462,7 @@ export default function AttendanceCheckIn() {
                         gap: '8px',
                         fontSize: '13px',
                         fontWeight: '700',
-                        color: '#334155',
+                        color: theme.textPrimary,
                         backgroundColor: 'transparent',
                         border: 'none',
                         borderRadius: '10px',
@@ -1281,7 +1470,7 @@ export default function AttendanceCheckIn() {
                         textAlign: 'left'
                       }}
                     >
-                      <Edit3 style={{ width: '15px', height: '15px', color: '#4f46e5' }} />
+                      <User style={{ width: '15px', height: '15px', color: isDarkMode ? '#818cf8' : '#4f46e5' }} />
                       View & Edit Profile
                     </button>
 
@@ -1319,7 +1508,7 @@ export default function AttendanceCheckIn() {
                 <button
                   onClick={() => setAuthMode('login')}
                   style={{
-                    padding: '8px 16px',
+                    padding: '8px 14px',
                     borderRadius: '10px',
                     border: '1px solid #cbd5e1',
                     backgroundColor: '#ffffff',
@@ -1339,7 +1528,7 @@ export default function AttendanceCheckIn() {
                 <button
                   onClick={() => setActiveTab('onboard')}
                   style={{
-                    padding: '8px 16px',
+                    padding: '8px 14px',
                     borderRadius: '10px',
                     border: 'none',
                     backgroundColor: '#4f46e5',
@@ -1354,151 +1543,11 @@ export default function AttendanceCheckIn() {
                   }}
                 >
                   <UserPlus style={{ width: '14px', height: '14px' }} />
-                  Register New
+                  <span className="hidden sm:inline">Register New</span>
                 </button>
               </div>
             )}
           </div>
-
-          {/* HAMBURGER BUTTON - MOBILE ONLY (md:hidden) */}
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden flex items-center justify-center p-2 rounded-xl bg-slate-100 border border-slate-300 text-slate-900 cursor-pointer"
-          >
-            {mobileMenuOpen ? <X style={{ width: '22px', height: '22px' }} /> : <Menu style={{ width: '22px', height: '22px' }} />}
-          </button>
-
-          {/* MOBILE BURGER MENU DRAWER */}
-          {mobileMenuOpen && (
-            <div className="w-full md:hidden pt-3 border-t border-slate-200 flex flex-col gap-2 mt-2">
-              {currentUser && (
-                <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
-                    <User size={16} className="text-indigo-600" />
-                    <span>{currentUser.name}</span>
-                  </div>
-                  <button
-                    onClick={() => { setMobileMenuOpen(false); handleLogout(); }}
-                    className="text-xs font-bold text-red-600 border border-red-200 bg-white px-2.5 py-1 rounded-lg"
-                  >
-                    Logout
-                  </button>
-                </div>
-              )}
-
-              <button
-                onClick={() => { setActiveTab('punch'); setMobileMenuOpen(false); }}
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: '10px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  fontSize: '13px',
-                  fontWeight: '700',
-                  backgroundColor: activeTab === 'punch' ? '#EEF2FF' : '#F8FAFC',
-                  color: activeTab === 'punch' ? '#4f46e5' : '#475569',
-                  textAlign: 'left'
-                }}
-              >
-                <ShieldCheck style={{ width: '16px', height: '16px' }} />
-                Punch Attendance
-              </button>
-
-              <button
-                onClick={() => { setActiveTab('history'); setMobileMenuOpen(false); }}
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: '10px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  fontSize: '13px',
-                  fontWeight: '700',
-                  backgroundColor: activeTab === 'history' ? '#EEF2FF' : '#F8FAFC',
-                  color: activeTab === 'history' ? '#4f46e5' : '#475569',
-                  textAlign: 'left'
-                }}
-              >
-                <History style={{ width: '16px', height: '16px' }} />
-                Attendance Logs
-              </button>
-
-              <button
-                onClick={() => { setActiveTab('leave'); setMobileMenuOpen(false); }}
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: '10px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  fontSize: '13px',
-                  fontWeight: '700',
-                  backgroundColor: activeTab === 'leave' ? '#EEF2FF' : '#F8FAFC',
-                  color: activeTab === 'leave' ? '#4f46e5' : '#475569',
-                  textAlign: 'left'
-                }}
-              >
-                <FileText style={{ width: '16px', height: '16px' }} />
-                Leave / Permission
-              </button>
-
-              {!currentUser && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '4px' }}>
-                  <button
-                    onClick={() => { setAuthMode('login'); setMobileMenuOpen(false); }}
-                    style={{
-                      padding: '10px',
-                      borderRadius: '10px',
-                      border: '1px solid #cbd5e1',
-                      backgroundColor: '#ffffff',
-                      color: '#334155',
-                      fontSize: '13px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px'
-                    }}
-                  >
-                    <Lock style={{ width: '14px', height: '14px' }} />
-                    Login
-                  </button>
-
-                  <button
-                    onClick={() => { setActiveTab('onboard'); setMobileMenuOpen(false); }}
-                    style={{
-                      padding: '10px',
-                      borderRadius: '10px',
-                      border: 'none',
-                      backgroundColor: '#4f46e5',
-                      color: '#ffffff',
-                      fontSize: '13px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px'
-                    }}
-                  >
-                    <UserPlus style={{ width: '14px', height: '14px' }} />
-                    Register
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </header>
 
@@ -1517,32 +1566,32 @@ export default function AttendanceCheckIn() {
           gap: '6px',
           padding: '8px 16px',
           borderRadius: '20px',
-          backgroundColor: '#ffffff',
-          border: '1px solid #cbd5e1',
-          color: '#334155',
+          backgroundColor: theme.cardBg,
+          border: `1px solid ${theme.border}`,
+          color: theme.textPrimary,
           fontSize: '14px',
           fontWeight: '700',
           fontFamily: 'monospace',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.04)'
+          boxShadow: isDarkMode ? 'none' : '0 2px 6px rgba(0,0,0,0.04)'
         }}>
-          <Clock style={{ width: '16px', height: '16px', color: '#4f46e5' }} />
+          <Clock style={{ width: '16px', height: '16px', color: isDarkMode ? '#818cf8' : '#4f46e5' }} />
           {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
         </div>
       </div>
 
       {/* MAIN LAYOUT WRAPPER */}
-      <div className="w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-6 box-border grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-6 box-border grid grid-cols-1 lg:grid-cols-12 gap-6">
 
         {/* LEFT COLUMN: LOCATION STATUS (SHOW ONLY ON PUNCH ATTENDANCE TAB) */}
         {activeTab === 'punch' && (
           <div className="lg:col-span-4 flex flex-col gap-5">
             {/* LOCATION STATUS & MAP LINK */}
             <div style={{
-              backgroundColor: '#ffffff',
+              backgroundColor: theme.cardBg,
               borderRadius: '20px',
-              border: '1px solid #e2e8f0',
+              border: `1px solid ${theme.border}`,
               padding: '20px',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.03)'
+              boxShadow: isDarkMode ? 'none' : '0 2px 10px rgba(0,0,0,0.03)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
                 <div style={{
@@ -1553,7 +1602,7 @@ export default function AttendanceCheckIn() {
                   boxShadow: isWithinZone ? '0 0 10px #10b981' : '0 0 10px #ef4444'
                 }} />
                 <div>
-                  <h4 style={{ margin: 0, fontSize: '14px', fontWeight: '800', color: '#0f172a' }}>
+                  <h4 style={{ margin: 0, fontSize: '14px', fontWeight: '800', color: theme.textPrimary }}>
                     Office Location Verification
                   </h4>
                 </div>
@@ -1561,37 +1610,58 @@ export default function AttendanceCheckIn() {
 
               {/* STATUS BADGE & GOOGLE MAPS LINK */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {/* STATUS BADGE WITH LIVE DISTANCE */}
                 {isWithinZone ? (
                   <div style={{
                     padding: '12px 16px',
                     borderRadius: '14px',
-                    backgroundColor: '#ECFDF5',
-                    border: '1px solid #A7F3D0',
-                    color: '#047857',
+                    backgroundColor: isDarkMode ? '#052e16' : '#ECFDF5',
+                    border: `1px solid ${isDarkMode ? '#166534' : '#A7F3D0'}`,
+                    color: isDarkMode ? '#6ee7b7' : '#047857',
                     fontSize: '13px',
                     fontWeight: '700',
                     display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
+                    flexDirection: 'column',
+                    gap: '4px',
+                    transition: 'all 0.2s ease'
                   }}>
-                    <CheckCircle2 style={{ width: '18px', height: '18px', color: '#10b981', flexShrink: 0 }} />
-                    You are at the Office! Attendance can be punched.
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <CheckCircle2 style={{ width: '18px', height: '18px', color: '#10b981', flexShrink: 0 }} />
+                      <span>You are at the Office! Attendance can be punched.</span>
+                    </div>
+                    {distanceMeters !== null && (
+                      <div style={{ fontSize: '11px', color: isDarkMode ? '#a7f3d0' : '#059669', paddingLeft: '26px' }}>
+                        📍 Current Distance: <strong>{distanceMeters < 1000 ? `${distanceMeters.toFixed(1)}m` : `${(distanceMeters / 1000).toFixed(2)}km`}</strong> (Max Allowed: {ALLOWED_RADIUS}m)
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div style={{
                     padding: '12px 16px',
                     borderRadius: '14px',
-                    backgroundColor: '#FEF2F2',
-                    border: '1px solid #FCA5A5',
-                    color: '#B91C1C',
+                    backgroundColor: isDarkMode ? '#450a0a' : '#FEF2F2',
+                    border: `1px solid ${isDarkMode ? '#991b1b' : '#FCA5A5'}`,
+                    color: isDarkMode ? '#fca5a5' : '#B91C1C',
                     fontSize: '13px',
                     fontWeight: '700',
                     display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
+                    flexDirection: 'column',
+                    gap: '4px',
+                    transition: 'all 0.2s ease'
                   }}>
-                    <AlertTriangle style={{ width: '18px', height: '18px', color: '#EF4444', flexShrink: 0 }} />
-                    Turn on location to know your distance away from office
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <AlertTriangle style={{ width: '18px', height: '18px', color: '#EF4444', flexShrink: 0 }} />
+                      <span>Outside Office Geofence ({ALLOWED_RADIUS}m limit)</span>
+                    </div>
+                    {distanceMeters !== null ? (
+                      <div style={{ fontSize: '11px', color: isDarkMode ? '#f87171' : '#DC2626', paddingLeft: '26px' }}>
+                        📍 Distance: <strong>{distanceMeters < 1000 ? `${distanceMeters.toFixed(1)}m` : `${(distanceMeters / 1000).toFixed(2)}km`}</strong> away from office
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '11px', color: isDarkMode ? '#f87171' : '#DC2626', paddingLeft: '26px' }}>
+                        Turn on location to detect distance away from office
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1635,7 +1705,7 @@ export default function AttendanceCheckIn() {
         )}
 
         {/* RIGHT COLUMN: MAIN WORK AREA (EXPANDS TO FULL WIDTH ON LOGS TAB) */}
-        <div className={`${activeTab === 'punch' ? 'lg:col-span-8' : 'lg:col-span-12'} bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-sm`}>
+        <div className={`${activeTab === 'punch' ? 'lg:col-span-8' : 'lg:col-span-12'} rounded-2xl p-4 sm:p-6 shadow-sm`} style={{ backgroundColor: theme.cardBg, border: `1px solid ${theme.border}`, color: theme.textPrimary }}>
 
           {/* ERROR ALERT DISPLAY */}
           {errorBanner && (
@@ -1643,14 +1713,15 @@ export default function AttendanceCheckIn() {
               marginBottom: '20px',
               padding: '14px 18px',
               borderRadius: '14px',
-              backgroundColor: '#FEF2F2',
-              border: '1px solid #FCA5A5',
-              color: '#991B1B',
+              backgroundColor: isDarkMode ? '#450a0a' : '#FEF2F2',
+              border: `1px solid ${isDarkMode ? '#991b1b' : '#FCA5A5'}`,
+              color: isDarkMode ? '#fca5a5' : '#991B1B',
               fontSize: '13px',
               fontWeight: '600',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between'
+              justifyContent: 'space-between',
+              transition: 'all 0.2s ease'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <AlertTriangle style={{ width: '18px', height: '18px', color: '#EF4444', flexShrink: 0 }} />
@@ -1664,22 +1735,46 @@ export default function AttendanceCheckIn() {
           {activeTab === 'punch' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               
-              {/* LATE ARRIVAL WARNING */}
-              {isPastCutoff && (
+              {/* LATE ARRIVAL WARNING (ONLY SHOWN IF NOT YET CHECKED IN) */}
+              {isPastCutoff && !hasCheckedIn && (
                 <div style={{
                   padding: '14px 18px',
                   borderRadius: '14px',
-                  backgroundColor: '#FFFBEB',
-                  border: '1px solid #FDE68A',
-                  color: '#B45309',
+                  backgroundColor: isDarkMode ? '#451a03' : '#FFFBEB',
+                  border: `1px solid ${isDarkMode ? '#92400e' : '#FDE68A'}`,
+                  color: isDarkMode ? '#fde68a' : '#B45309',
                   fontSize: '13px',
                   fontWeight: '600',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '10px'
+                  gap: '10px',
+                  transition: 'all 0.2s ease'
                 }}>
                   <Clock style={{ width: '18px', height: '18px', color: '#F59E0B', flexShrink: 0 }} />
                   <span>Late arrival: Checking in now will be marked as <strong style={{ textDecoration: 'underline' }}>LATE</strong> (Cutoff: 10:00 AM).</span>
+                </div>
+              )}
+
+              {/* ALREADY CHECKED IN TODAY BADGE */}
+              {hasCheckedIn && (
+                <div style={{
+                  padding: '14px 18px',
+                  borderRadius: '14px',
+                  backgroundColor: isDarkMode ? '#052e16' : '#ECFDF5',
+                  border: `1px solid ${isDarkMode ? '#166534' : '#A7F3D0'}`,
+                  color: isDarkMode ? '#6ee7b7' : '#047857',
+                  fontSize: '13px',
+                  fontWeight: '700',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  transition: 'all 0.2s ease'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <CheckCircle2 style={{ width: '18px', height: '18px', color: '#10b981', flexShrink: 0 }} />
+                    <span>Check-In recorded for today! Next punch will be <strong style={{ color: isDarkMode ? '#a7f3d0' : '#065f46' }}>Check-Out</strong> (available after 5:30 PM).</span>
+                  </div>
                 </div>
               )}
 
@@ -1693,6 +1788,7 @@ export default function AttendanceCheckIn() {
                   buttonText={hasCheckedIn ? "Check Out" : "Check In"}
                   resetOnCapture={true}
                   autoCapture={true}
+                  isDarkMode={isDarkMode}
                   onFaceCaptured={(blob) => handlePunchAttendance(blob)} 
                 />
               ) : (
@@ -1700,21 +1796,22 @@ export default function AttendanceCheckIn() {
                   width: '100%',
                   padding: '36px 20px',
                   borderRadius: '24px',
-                  backgroundColor: '#FEF2F2',
-                  border: '2px solid #FCA5A5',
+                  backgroundColor: isDarkMode ? '#1a1012' : '#FEF2F2',
+                  border: `1px solid ${isDarkMode ? '#7f1d1d' : '#FCA5A5'}`,
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
                   textAlign: 'center',
-                  boxSizing: 'border-box'
+                  boxSizing: 'border-box',
+                  transition: 'all 0.2s ease'
                 }}>
                   <div style={{
                     width: '56px',
                     height: '56px',
                     borderRadius: '50%',
-                    backgroundColor: '#FEE2E2',
-                    border: '1px solid #FCA5A5',
+                    backgroundColor: isDarkMode ? '#450a0a' : '#FEE2E2',
+                    border: `1px solid ${isDarkMode ? '#991b1b' : '#FCA5A5'}`,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -1722,8 +1819,8 @@ export default function AttendanceCheckIn() {
                   }}>
                     <Lock style={{ width: '28px', height: '28px', color: '#EF4444' }} />
                   </div>
-                  <h4 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#991B1B' }}>Camera & Punch Disabled</h4>
-                  <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: '#7F1D1D', maxWidth: '340px' }}>
+                  <h4 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: isDarkMode ? '#fca5a5' : '#991B1B' }}>Camera & Punch Disabled</h4>
+                  <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: isDarkMode ? '#f87171' : '#7F1D1D', maxWidth: '340px' }}>
                     You are outside the office area. Please reach the office location to access the camera and punch attendance.
                   </p>
                 </div>
@@ -1877,7 +1974,7 @@ export default function AttendanceCheckIn() {
 
 
               {/* FACE PHOTO CAPTURE SECTION - CENTERED MODAL CAPTURE */}
-              <FaceScanModalCapture onFaceCaptured={(blobOrDataUrl) => {
+              <FaceScanModalCapture isDarkMode={isDarkMode} onFaceCaptured={(blobOrDataUrl) => {
                 if (typeof blobOrDataUrl === 'string' && blobOrDataUrl.startsWith('data:')) {
                   setRegPhotoPreview(blobOrDataUrl);
                   try {
@@ -1904,14 +2001,14 @@ export default function AttendanceCheckIn() {
               }} />
 
               {faceValidating && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: '10px', backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', fontSize: '13px', fontWeight: '700' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: '10px', backgroundColor: isDarkMode ? '#172554' : '#EFF6FF', border: `1px solid ${isDarkMode ? '#1e40af' : '#BFDBFE'}`, color: isDarkMode ? '#93c5fd' : '#1D4ED8', fontSize: '13px', fontWeight: '700' }}>
                   <RefreshCw style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
                   Analyzing camera biometrics for human face...
                 </div>
               )}
 
               {faceValidError && (
-                <div style={{ padding: '12px 14px', borderRadius: '10px', backgroundColor: '#FEF2F2', border: '1px solid #FCA5A5', color: '#B91C1C', fontSize: '13px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ padding: '12px 14px', borderRadius: '10px', backgroundColor: isDarkMode ? '#450a0a' : '#FEF2F2', border: `1px solid ${isDarkMode ? '#991b1b' : '#FCA5A5'}`, color: isDarkMode ? '#fca5a5' : '#B91C1C', fontSize: '13px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <AlertTriangle style={{ width: '18px', height: '18px', color: '#EF4444', flexShrink: 0 }} />
                   {faceValidError}
                 </div>
@@ -1975,35 +2072,91 @@ export default function AttendanceCheckIn() {
               ) : (
                 <>
                   {/* Top Bar Controls: Month Selector & Sync to PayslipPro */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px', backgroundColor: '#ffffff', padding: '16px 20px', borderRadius: '18px', border: '1px solid #e2e8f0', boxShadow: '0 2px 6px rgba(15,23,42,0.03)' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px', backgroundColor: theme.cardBg, padding: '16px 20px', borderRadius: '18px', border: `1px solid ${theme.border}`, boxShadow: isDarkMode ? 'none' : '0 2px 6px rgba(15,23,42,0.03)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ position: 'relative' }}>
-                        <select
-                          value={`${selectedYear}-${selectedMonth}`}
-                          onChange={(e) => {
-                            const [y, m] = e.target.value.split('-');
-                            setSelectedYear(parseInt(y));
-                            setSelectedMonth(parseInt(m));
-                          }}
+                      {/* CUSTOM SLEEK MONTH SELECTOR DROPDOWN */}
+                      <div data-custom-dropdown style={{ position: 'relative' }}>
+                        <button
+                          type="button"
+                          onClick={() => setMonthDropdownOpen(!monthDropdownOpen)}
                           style={{
-                            padding: '10px 16px',
+                            padding: '9px 14px',
                             borderRadius: '12px',
-                            backgroundColor: '#f8fafc',
-                            border: '1px solid #cbd5e1',
+                            backgroundColor: theme.inputBg,
+                            border: `1px solid ${theme.inputBorder}`,
                             fontSize: '13px',
                             fontWeight: '700',
-                            color: '#0f172a',
+                            color: theme.textPrimary,
                             cursor: 'pointer',
-                            outline: 'none'
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            boxShadow: isDarkMode ? 'none' : '0 1px 2px rgba(0,0,0,0.05)',
+                            transition: 'all 0.15s ease'
                           }}
                         >
-                          <option value="2026-10">October 2026</option>
-                          <option value="2026-11">November 2026</option>
-                          <option value="2026-12">December 2026</option>
+                          <span>
+                            {`${selectedYear}-${selectedMonth}` === '2026-10' ? 'October 2026' : `${selectedYear}-${selectedMonth}` === '2026-11' ? 'November 2026' : 'December 2026'}
+                          </span>
+                          <ChevronDown style={{ width: '14px', height: '14px', color: theme.textSecondary, transition: 'transform 0.2s', transform: monthDropdownOpen ? 'rotate(180deg)' : 'none' }} />
+                        </button>
 
-                        </select>
+                        {monthDropdownOpen && (
+                          <div style={{
+                            position: 'absolute',
+                            top: 'calc(100% + 6px)',
+                            left: 0,
+                            minWidth: '160px',
+                            backgroundColor: theme.cardBg,
+                            borderRadius: '14px',
+                            border: `1px solid ${theme.border}`,
+                            boxShadow: isDarkMode ? '0 12px 30px rgba(0,0,0,0.6)' : '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)',
+                            zIndex: 100,
+                            padding: '6px',
+                            overflow: 'hidden'
+                          }}>
+                            {[
+                              { label: 'October 2026', value: '2026-10' },
+                              { label: 'November 2026', value: '2026-11' },
+                              { label: 'December 2026', value: '2026-12' }
+                            ].map((opt) => {
+                              const isSelected = `${selectedYear}-${selectedMonth}` === opt.value;
+                              return (
+                                <button
+                                  key={opt.value}
+                                  type="button"
+                                  onClick={() => {
+                                    const [y, m] = opt.value.split('-');
+                                    setSelectedYear(parseInt(y));
+                                    setSelectedMonth(parseInt(m));
+                                    setMonthDropdownOpen(false);
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    backgroundColor: isSelected ? (isDarkMode ? '#27272a' : '#EEF2FF') : 'transparent',
+                                    color: isSelected ? (isDarkMode ? '#818cf8' : '#4F46E5') : theme.textPrimary,
+                                    fontSize: '13px',
+                                    fontWeight: isSelected ? '800' : '600',
+                                    textAlign: 'left',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    transition: 'background 0.15s ease'
+                                  }}
+                                >
+                                  <span>{opt.label}</span>
+                                  {isSelected && <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isDarkMode ? '#818cf8' : '#4F46E5' }} />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                      <button onClick={() => { fetchHistory(); fetchMonthlySummary(); }} style={{ padding: '10px 14px', borderRadius: '12px', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', color: '#334155', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <button onClick={() => { fetchHistory(); fetchMonthlySummary(); }} style={{ padding: '10px 14px', borderRadius: '12px', backgroundColor: theme.cardInnerBg, border: `1px solid ${theme.border}`, color: theme.textPrimary, fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <RefreshCw style={{ width: '14px', height: '14px' }} /> Refresh
                       </button>
                     </div>
@@ -2043,45 +2196,45 @@ export default function AttendanceCheckIn() {
 
                   {/* Monthly Payroll Summary KPI Metrics Cards */}
                   {loadingSummary ? (
-                    <div style={{ padding: '30px', textAlign: 'center', color: '#64748b', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <div style={{ padding: '30px', textAlign: 'center', color: theme.textSecondary, fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                       <RefreshCw style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite', color: '#4f46e5' }} />
                       Loading Monthly Payroll Aggregation...
                     </div>
                   ) : monthlySummary ? (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
-                      <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '12px', fontWeight: '700', marginBottom: '6px' }}>
+                      <div style={{ backgroundColor: theme.cardBg, padding: '16px', borderRadius: '16px', border: `1px solid ${theme.border}`, boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: theme.textSecondary, fontSize: '12px', fontWeight: '700', marginBottom: '6px' }}>
                           🏢 Total Calendar Days
                         </div>
-                        <div style={{ fontSize: '24px', fontWeight: '900', color: '#0f172a' }}>
-                          {monthlySummary.calendar_days} <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '500' }}>Days</span>
+                        <div style={{ fontSize: '24px', fontWeight: '900', color: theme.textPrimary }}>
+                          {monthlySummary.calendar_days} <span style={{ fontSize: '12px', color: theme.textMuted, fontWeight: '500' }}>Days</span>
                         </div>
                       </div>
 
-                      <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#047857', fontSize: '12px', fontWeight: '700', marginBottom: '6px' }}>
+                      <div style={{ backgroundColor: theme.cardBg, padding: '16px', borderRadius: '16px', border: `1px solid ${theme.border}`, boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981', fontSize: '12px', fontWeight: '700', marginBottom: '6px' }}>
                           🟢 Present Days
                         </div>
-                        <div style={{ fontSize: '24px', fontWeight: '900', color: '#059669' }}>
-                          {monthlySummary.present_count} <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '500' }}>Punches</span>
+                        <div style={{ fontSize: '24px', fontWeight: '900', color: '#10b981' }}>
+                          {monthlySummary.present_count} <span style={{ fontSize: '12px', color: theme.textMuted, fontWeight: '500' }}>Punches</span>
                         </div>
                       </div>
 
-                      <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '16px', border: '1px solid #fef3c7', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309', fontSize: '12px', fontWeight: '700', marginBottom: '6px' }}>
+                      <div style={{ backgroundColor: theme.cardBg, padding: '16px', borderRadius: '16px', border: `1px solid ${theme.border}`, boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#f59e0b', fontSize: '12px', fontWeight: '700', marginBottom: '6px' }}>
                           ⏰ Late Punches
                         </div>
-                        <div style={{ fontSize: '24px', fontWeight: '900', color: '#d97706' }}>
-                          {monthlySummary.late_count} <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '500' }}>Punches</span>
+                        <div style={{ fontSize: '24px', fontWeight: '900', color: '#f59e0b' }}>
+                          {monthlySummary.late_count} <span style={{ fontSize: '12px', color: theme.textMuted, fontWeight: '500' }}>Punches</span>
                         </div>
                       </div>
 
-                      <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '16px', border: '1px solid #fecaca', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#dc2626', fontSize: '12px', fontWeight: '700', marginBottom: '6px' }}>
+                      <div style={{ backgroundColor: theme.cardBg, padding: '16px', borderRadius: '16px', border: `1px solid ${theme.border}`, boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444', fontSize: '12px', fontWeight: '700', marginBottom: '6px' }}>
                           🔴 Absent Days
                         </div>
                         <div style={{ fontSize: '24px', fontWeight: '900', color: '#ef4444' }}>
-                          {monthlySummary.absent_count} <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '500' }}>Days</span>
+                          {monthlySummary.absent_count} <span style={{ fontSize: '12px', color: theme.textMuted, fontWeight: '500' }}>Days</span>
                         </div>
                       </div>
                     </div>
@@ -2089,14 +2242,14 @@ export default function AttendanceCheckIn() {
 
                   {/* Day-Wise Audit Matrix Table */}
                   {monthlySummary && monthlySummary.day_wise_audit ? (
-                    <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-                      <div style={{ padding: '14px 18px', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f8fafc', fontWeight: '800', fontSize: '13px', color: '#0f172a' }}>
+                    <div style={{ backgroundColor: theme.cardBg, borderRadius: '16px', border: `1px solid ${theme.border}`, overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                      <div style={{ padding: '14px 18px', borderBottom: `1px solid ${theme.border}`, backgroundColor: theme.cardInnerBg, fontWeight: '800', fontSize: '13px', color: theme.textPrimary }}>
                         📅 Day-Wise Monthly Attendance Matrix
                       </div>
                       <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
                           <thead>
-                            <tr style={{ backgroundColor: '#f1f5f9', color: '#475569', borderBottom: '1px solid #e2e8f0', fontSize: '12px' }}>
+                            <tr style={{ backgroundColor: theme.tableHeaderBg, color: theme.textSecondary, borderBottom: `1px solid ${theme.border}`, fontSize: '12px' }}>
                               <th style={{ padding: '10px 16px' }}>Date</th>
                               <th style={{ padding: '10px 16px' }}>Check-In</th>
                               <th style={{ padding: '10px 16px' }}>Check-Out</th>
@@ -2107,21 +2260,21 @@ export default function AttendanceCheckIn() {
                           </thead>
                           <tbody>
                             {monthlySummary.day_wise_audit.map((item, idx) => (
-                              <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                <td style={{ padding: '12px 16px', fontWeight: '700', color: '#0f172a' }}>{item.date}</td>
-                                <td style={{ padding: '12px 16px', color: '#334155' }}>{item.check_in || '--:--'}</td>
-                                <td style={{ padding: '12px 16px', color: '#334155' }}>{item.check_out || '--:--'}</td>
-                                <td style={{ padding: '12px 16px', color: '#64748b' }}>{item.duration_hours > 0 ? `${item.duration_hours} hrs` : '--'}</td>
-                                <td style={{ padding: '12px 16px', color: '#64748b' }}>{item.distance_m ? `${item.distance_m}m` : '--'}</td>
+                              <tr key={idx} style={{ borderBottom: `1px solid ${theme.tableRowBorder}` }}>
+                                <td style={{ padding: '12px 16px', fontWeight: '700', color: theme.textPrimary }}>{item.date}</td>
+                                <td style={{ padding: '12px 16px', color: theme.textSecondary }}>{item.check_in || '--:--'}</td>
+                                <td style={{ padding: '12px 16px', color: theme.textSecondary }}>{item.check_out || '--:--'}</td>
+                                <td style={{ padding: '12px 16px', color: theme.textMuted }}>{item.duration_hours > 0 ? `${item.duration_hours} hrs` : '--'}</td>
+                                <td style={{ padding: '12px 16px', color: theme.textMuted }}>{item.distance_m ? `${item.distance_m}m` : '--'}</td>
                                 <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                                   <span style={{
                                     padding: '4px 10px',
                                     borderRadius: '20px',
                                     fontSize: '11px',
                                     fontWeight: '800',
-                                    backgroundColor: item.status === 'PRESENT' ? '#ECFDF5' : item.status === 'LATE' ? '#FFFBEB' : '#FEF2F2',
-                                    color: item.status === 'PRESENT' ? '#047857' : item.status === 'LATE' ? '#B45309' : '#DC2626',
-                                    border: item.status === 'PRESENT' ? '1px solid #A7F3D0' : item.status === 'LATE' ? '1px solid #FDE68A' : '1px solid #FECACA'
+                                    backgroundColor: item.status === 'PRESENT' ? (isDarkMode ? '#064e3b' : '#ECFDF5') : item.status === 'LATE' ? (isDarkMode ? '#451a03' : '#FFFBEB') : (isDarkMode ? '#7f1d1d' : '#FEF2F2'),
+                                    color: item.status === 'PRESENT' ? (isDarkMode ? '#a7f3d0' : '#047857') : item.status === 'LATE' ? (isDarkMode ? '#fde68a' : '#B45309') : (isDarkMode ? '#fca5a5' : '#DC2626'),
+                                    border: item.status === 'PRESENT' ? '1px solid #10b981' : item.status === 'LATE' ? '1px solid #f59e0b' : '1px solid #ef4444'
                                   }}>
                                     {item.status}
                                   </span>
@@ -2141,69 +2294,239 @@ export default function AttendanceCheckIn() {
           {/* LEAVE & PERMISSION TAB WORKFLOW */}
           {activeTab === 'leave' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              <div style={{ padding: '16px', borderRadius: '14px', backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <FileText style={{ width: '22px', height: '22px', color: '#4f46e5' }} /> Leave & Permission Requests
+              <div style={{ padding: '16px', borderRadius: '14px', backgroundColor: theme.cardInnerBg, border: `1px solid ${theme.border}` }}>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: theme.textPrimary, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <FileText style={{ width: '22px', height: '22px', color: isDarkMode ? '#818cf8' : '#4f46e5' }} /> Leave & Permission Requests
                 </h3>
-                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
+                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: theme.textSecondary }}>
                   Submit leave or permission requests for admin approval and automatic sync with Pay Slip Pro.
                 </p>
               </div>
 
               {/* REQUEST FORM & STATUS LIST GRID */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
                 
                 {/* SUBMIT LEAVE REQUEST FORM */}
-                <form onSubmit={handleLeaveSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px', backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-                  <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>Submit New Request</h4>
+                <form onSubmit={handleLeaveSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px', backgroundColor: theme.cardBg, padding: '20px', borderRadius: '16px', border: `1px solid ${theme.border}`, boxShadow: isDarkMode ? 'none' : '0 2px 4px rgba(0,0,0,0.02)' }}>
+                  <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: theme.textPrimary }}>Submit New Request</h4>
 
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Request Type *</label>
-                    <select
-                      value={leaveForm.request_type}
-                      onChange={(e) => setLeaveForm({ ...leaveForm, request_type: e.target.value })}
-                      style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', fontWeight: '600', color: '#0f172a', boxSizing: 'border-box' }}
+                  {/* CUSTOM REQUEST TYPE DROPDOWN */}
+                  <div data-custom-dropdown style={{ position: 'relative' }}>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: theme.textSecondary, marginBottom: '6px' }}>Request Type *</label>
+                    <button
+                      type="button"
+                      onClick={() => setLeaveTypeDropdownOpen(!leaveTypeDropdownOpen)}
+                      style={{
+                        width: '100%',
+                        padding: '11px 14px',
+                        borderRadius: '10px',
+                        backgroundColor: theme.inputBg,
+                        border: `1px solid ${theme.inputBorder}`,
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        color: theme.textPrimary,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        boxSizing: 'border-box'
+                      }}
                     >
-                      <option value="CASUAL">Casual Leave</option>
-                      <option value="SICK">Sick Leave</option>
-                      <option value="HALF_DAY">Half Day Leave</option>
-                      <option value="PERMISSION">Permission Request</option>
-                    </select>
+                      <span>
+                        {leaveForm.request_type === 'CASUAL' ? 'Casual Leave' : leaveForm.request_type === 'SICK' ? 'Sick Leave' : leaveForm.request_type === 'HALF_DAY' ? 'Half Day Leave' : 'Permission Request'}
+                      </span>
+                      <ChevronDown style={{ width: '15px', height: '15px', color: theme.textSecondary, transition: 'transform 0.2s', transform: leaveTypeDropdownOpen ? 'rotate(180deg)' : 'none' }} />
+                    </button>
+
+                    {leaveTypeDropdownOpen && (
+                      <div style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 6px)',
+                        left: 0,
+                        right: 0,
+                        backgroundColor: theme.cardBg,
+                        borderRadius: '12px',
+                        border: `1px solid ${theme.border}`,
+                        boxShadow: isDarkMode ? '0 12px 30px rgba(0,0,0,0.6)' : '0 10px 25px -5px rgba(0,0,0,0.1)',
+                        zIndex: 100,
+                        padding: '6px',
+                        overflow: 'hidden'
+                      }}>
+                        {[
+                          { label: 'Casual Leave', value: 'CASUAL' },
+                          { label: 'Sick Leave', value: 'SICK' },
+                          { label: 'Half Day Leave', value: 'HALF_DAY' },
+                          { label: 'Permission Request', value: 'PERMISSION' }
+                        ].map((opt) => {
+                          const isSelected = leaveForm.request_type === opt.value;
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => {
+                                setLeaveForm({ ...leaveForm, request_type: opt.value });
+                                setLeaveTypeDropdownOpen(false);
+                              }}
+                              style={{
+                                width: '100%',
+                                padding: '9px 12px',
+                                borderRadius: '8px',
+                                backgroundColor: isSelected ? (isDarkMode ? '#27272a' : '#EEF2FF') : 'transparent',
+                                color: isSelected ? (isDarkMode ? '#818cf8' : '#4F46E5') : theme.textPrimary,
+                                fontSize: '13px',
+                                fontWeight: isSelected ? '800' : '600',
+                                textAlign: 'left',
+                                border: 'none',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between'
+                              }}
+                            >
+                              <span>{opt.label}</span>
+                              {isSelected && <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isDarkMode ? '#818cf8' : '#4F46E5' }} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Start Date *</label>
+                  {leaveForm.request_type === 'PERMISSION' ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
+                      <div className="w-full">
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: theme.textSecondary, marginBottom: '6px' }}>Date *</label>
+                        <input
+                          type="date"
+                          required
+                          value={leaveForm.start_date}
+                          onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value, end_date: e.target.value })}
+                          style={{ width: '100%', minWidth: 0, padding: '11px 14px', borderRadius: '10px', backgroundColor: theme.inputBg, border: `1px solid ${theme.inputBorder}`, fontSize: '13px', color: theme.textPrimary, boxSizing: 'border-box' }}
+                        />
+                      </div>
+
+                      {/* CUSTOM HOURS REQUIRED DROPDOWN */}
+                      <div data-custom-dropdown className="w-full" style={{ position: 'relative' }}>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: theme.textSecondary, marginBottom: '6px' }}>Hours Required *</label>
+                        <button
+                          type="button"
+                          onClick={() => setHoursDropdownOpen(!hoursDropdownOpen)}
+                          style={{
+                            width: '100%',
+                            minWidth: 0,
+                            padding: '11px 14px',
+                            borderRadius: '10px',
+                            backgroundColor: theme.inputBg,
+                            border: `1px solid ${theme.inputBorder}`,
+                            fontSize: '13px',
+                            fontWeight: '700',
+                            color: theme.textPrimary,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            boxSizing: 'border-box'
+                          }}
+                        >
+                          <span>{leaveForm.duration_hours} Hour{leaveForm.duration_hours > 1 ? 's' : ''}</span>
+                          <ChevronDown style={{ width: '15px', height: '15px', color: theme.textSecondary, transition: 'transform 0.2s', transform: hoursDropdownOpen ? 'rotate(180deg)' : 'none' }} />
+                        </button>
+
+                        {hoursDropdownOpen && (
+                          <div style={{
+                            position: 'absolute',
+                            top: 'calc(100% + 6px)',
+                            left: 0,
+                            right: 0,
+                            backgroundColor: theme.cardBg,
+                            borderRadius: '12px',
+                            border: `1px solid ${theme.border}`,
+                            boxShadow: isDarkMode ? '0 12px 30px rgba(0,0,0,0.6)' : '0 10px 25px -5px rgba(0,0,0,0.1)',
+                            zIndex: 100,
+                            padding: '6px',
+                            overflow: 'hidden'
+                          }}>
+                            {['1', '2', '3'].map((hr) => {
+                              const isSelected = String(leaveForm.duration_hours) === hr;
+                              return (
+                                <button
+                                  key={hr}
+                                  type="button"
+                                  onClick={() => {
+                                    setLeaveForm({ ...leaveForm, duration_hours: hr });
+                                    setHoursDropdownOpen(false);
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    padding: '9px 12px',
+                                    borderRadius: '8px',
+                                    backgroundColor: isSelected ? (isDarkMode ? '#27272a' : '#EEF2FF') : 'transparent',
+                                    color: isSelected ? (isDarkMode ? '#818cf8' : '#4F46E5') : theme.textPrimary,
+                                    fontSize: '13px',
+                                    fontWeight: isSelected ? '800' : '600',
+                                    textAlign: 'left',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between'
+                                  }}
+                                >
+                                  <span>{hr} Hour{parseInt(hr) > 1 ? 's' : ''}</span>
+                                  {isSelected && <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isDarkMode ? '#818cf8' : '#4F46E5' }} />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : leaveForm.request_type === 'HALF_DAY' ? (
+                    <div className="w-full">
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: theme.textSecondary, marginBottom: '6px' }}>Date *</label>
                       <input
                         type="date"
                         required
                         value={leaveForm.start_date}
-                        onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value })}
-                        style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }}
+                        onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value, end_date: e.target.value })}
+                        style={{ width: '100%', minWidth: 0, padding: '12px 14px', borderRadius: '10px', backgroundColor: theme.inputBg, border: `1px solid ${theme.inputBorder}`, fontSize: '13px', color: theme.textPrimary, boxSizing: 'border-box' }}
                       />
                     </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
+                      <div className="w-full">
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: theme.textSecondary, marginBottom: '6px' }}>Start Date *</label>
+                        <input
+                          type="date"
+                          required
+                          value={leaveForm.start_date}
+                          onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value })}
+                          style={{ width: '100%', minWidth: 0, padding: '12px 14px', borderRadius: '10px', backgroundColor: theme.inputBg, border: `1px solid ${theme.inputBorder}`, fontSize: '13px', color: theme.textPrimary, boxSizing: 'border-box' }}
+                        />
+                      </div>
 
-                    <div>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>End Date *</label>
-                      <input
-                        type="date"
-                        required
-                        value={leaveForm.end_date}
-                        onChange={(e) => setLeaveForm({ ...leaveForm, end_date: e.target.value })}
-                        style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }}
-                      />
+                      <div className="w-full">
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: theme.textSecondary, marginBottom: '6px' }}>End Date *</label>
+                        <input
+                          type="date"
+                          required
+                          value={leaveForm.end_date}
+                          onChange={(e) => setLeaveForm({ ...leaveForm, end_date: e.target.value })}
+                          style={{ width: '100%', minWidth: 0, padding: '12px 14px', borderRadius: '10px', backgroundColor: theme.inputBg, border: `1px solid ${theme.inputBorder}`, fontSize: '13px', color: theme.textPrimary, boxSizing: 'border-box' }}
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Reason *</label>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: theme.textSecondary, marginBottom: '6px' }}>Reason *</label>
                     <textarea
                       required
                       rows={3}
-                      placeholder="Specify reason for leave/permission request..."
+                      placeholder="Specify reason for request..."
                       value={leaveForm.reason}
                       onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
-                      style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                      style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: theme.inputBg, border: `1px solid ${theme.inputBorder}`, color: theme.textPrimary, fontSize: '13px', boxSizing: 'border-box', fontFamily: 'inherit' }}
                     />
                   </div>
 
@@ -2214,7 +2537,7 @@ export default function AttendanceCheckIn() {
                       width: '100%',
                       padding: '12px',
                       borderRadius: '10px',
-                      backgroundColor: '#4f46e5',
+                      backgroundColor: isDarkMode ? '#6366f1' : '#4f46e5',
                       color: '#ffffff',
                       fontWeight: '800',
                       fontSize: '13px',
@@ -2231,50 +2554,56 @@ export default function AttendanceCheckIn() {
                   </button>
                 </form>
 
-                {/* MY REQUESTS HISTORY LIST */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                {/* MY REQUESTS HISTORY LIST (RESTORED ON RIGHT SIDE FOR DESKTOP ONLY / HIDDEN ON MOBILE) */}
+                <div className="hidden md:flex" style={{ flexDirection: 'column', gap: '14px', backgroundColor: theme.cardBg, padding: '20px', borderRadius: '16px', border: `1px solid ${theme.border}`, boxShadow: isDarkMode ? 'none' : '0 2px 4px rgba(0,0,0,0.02)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>Recent Requests & Status</h4>
+                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: theme.textPrimary }}>Recent Requests & Status</h4>
                     <button
                       onClick={fetchMyLeaves}
-                      style={{ background: 'none', border: 'none', color: '#4f46e5', fontWeight: '700', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      style={{ background: 'none', border: 'none', color: isDarkMode ? '#818cf8' : '#4f46e5', fontWeight: '700', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                     >
                       <RefreshCw style={{ width: '12px', height: '12px' }} /> Refresh
                     </button>
                   </div>
 
                   {loadingLeaves ? (
-                    <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>Loading requests...</div>
+                    <div style={{ padding: '20px', textAlign: 'center', color: theme.textSecondary, fontSize: '13px' }}>Loading requests...</div>
                   ) : myLeavesList.length === 0 ? (
-                    <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                    <div style={{ padding: '30px', textAlign: 'center', color: theme.textMuted, fontSize: '13px' }}>
                       No leave/permission requests submitted yet.
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '420px', overflowY: 'auto' }}>
                       {myLeavesList.map((item) => (
-                        <div key={item.id} style={{ padding: '14px', borderRadius: '12px', border: '1px solid #f1f5f9', backgroundColor: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div key={item.id} style={{ padding: '14px', borderRadius: '12px', border: `1px solid ${theme.border}`, backgroundColor: theme.cardInnerBg, display: 'flex', flexDirection: 'column', gap: '6px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '13px', fontWeight: '800', color: '#0f172a' }}>{item.request_type}</span>
+                            <span style={{ fontSize: '13px', fontWeight: '800', color: theme.textPrimary }}>{getRequestTypeLabel(item.request_type)}</span>
                             <span style={{
                               padding: '3px 8px',
                               borderRadius: '12px',
                               fontSize: '10px',
                               fontWeight: '800',
-                              backgroundColor: item.status === 'APPROVED' ? '#ECFDF5' : item.status === 'REJECTED' ? '#FEF2F2' : '#FFFBEB',
-                              color: item.status === 'APPROVED' ? '#047857' : item.status === 'REJECTED' ? '#DC2626' : '#B45309',
-                              border: item.status === 'APPROVED' ? '1px solid #A7F3D0' : item.status === 'REJECTED' ? '1px solid #FECACA' : '1px solid #FDE68A'
+                              backgroundColor: item.status === 'APPROVED' ? (isDarkMode ? '#064e3b' : '#ECFDF5') : item.status === 'REJECTED' ? (isDarkMode ? '#7f1d1d' : '#FEF2F2') : (isDarkMode ? '#451a03' : '#FFFBEB'),
+                              color: item.status === 'APPROVED' ? (isDarkMode ? '#a7f3d0' : '#047857') : item.status === 'REJECTED' ? (isDarkMode ? '#fca5a5' : '#DC2626') : (isDarkMode ? '#fde68a' : '#B45309'),
+                              border: item.status === 'APPROVED' ? '1px solid #10b981' : item.status === 'REJECTED' ? '1px solid #ef4444' : '1px solid #f59e0b'
                             }}>
                               {item.status}
                             </span>
                           </div>
-                          <div style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
-                            📅 {item.start_date} to {item.end_date}
+                          <div style={{ fontSize: '12px', color: theme.textSecondary, fontWeight: '600' }}>
+                            {item.request_type === 'PERMISSION' ? (
+                              <>⏱️ Date: {item.start_date} | Duration: {item.duration_hours || 2} Hours</>
+                            ) : item.request_type === 'HALF_DAY' ? (
+                              <>🌗 Date: {item.start_date} (Half Day)</>
+                            ) : (
+                              <>📅 {item.start_date} to {item.end_date}</>
+                            )}
                           </div>
-                          <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>
+                          <div style={{ fontSize: '12px', color: theme.textMuted, fontStyle: 'italic' }}>
                             "{item.reason}"
                           </div>
                           {item.admin_remarks && (
-                            <div style={{ fontSize: '11px', color: '#4f46e5', fontWeight: '700', marginTop: '2px' }}>
+                            <div style={{ fontSize: '11px', color: isDarkMode ? '#818cf8' : '#4f46e5', fontWeight: '700', marginTop: '2px' }}>
                               Admin Note: {item.admin_remarks}
                             </div>
                           )}
@@ -2288,7 +2617,326 @@ export default function AttendanceCheckIn() {
             </div>
           )}
 
+          {/* STATUS TAB WORKFLOW (Dedicated tab for viewing Leave & Permission request status) */}
+          {activeTab === 'status' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ padding: '16px', borderRadius: '14px', backgroundColor: theme.cardInnerBg, border: `1px solid ${theme.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: theme.textPrimary, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <CheckCircle2 style={{ width: '22px', height: '22px', color: isDarkMode ? '#818cf8' : '#4f46e5' }} /> Leave & Permission Request Status
+                  </h3>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: theme.textSecondary }}>
+                    Real-time status of your submitted leave and permission requests.
+                  </p>
+                </div>
+                <button
+                  onClick={fetchMyLeaves}
+                  style={{ padding: '8px 14px', borderRadius: '10px', backgroundColor: isDarkMode ? '#27272a' : '#EEF2FF', border: `1px solid ${theme.border}`, color: isDarkMode ? '#818cf8' : '#4F46E5', fontWeight: '700', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <RefreshCw style={{ width: '14px', height: '14px' }} /> Refresh
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', backgroundColor: theme.cardBg, padding: '20px', borderRadius: '16px', border: `1px solid ${theme.border}`, boxShadow: isDarkMode ? 'none' : '0 2px 4px rgba(0,0,0,0.02)' }}>
+                {loadingLeaves ? (
+                  <div style={{ padding: '20px', textAlign: 'center', color: theme.textSecondary, fontSize: '13px' }}>Loading requests...</div>
+                ) : myLeavesList.length === 0 ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: theme.textMuted, fontSize: '13px' }}>
+                    No leave/permission requests submitted yet.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {myLeavesList.map((item) => (
+                      <div key={item.id} style={{ padding: '16px', borderRadius: '14px', border: `1px solid ${theme.border}`, backgroundColor: theme.cardInnerBg, boxShadow: '0 2px 6px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '14px', fontWeight: '800', color: theme.textPrimary }}>{getRequestTypeLabel(item.request_type)}</span>
+                          <span style={{
+                            padding: '4px 12px',
+                            borderRadius: '20px',
+                            fontSize: '11px',
+                            fontWeight: '800',
+                            backgroundColor: item.status === 'APPROVED' ? (isDarkMode ? '#064e3b' : '#ECFDF5') : item.status === 'REJECTED' ? (isDarkMode ? '#7f1d1d' : '#FEF2F2') : (isDarkMode ? '#451a03' : '#FFFBEB'),
+                            color: item.status === 'APPROVED' ? (isDarkMode ? '#a7f3d0' : '#047857') : item.status === 'REJECTED' ? (isDarkMode ? '#fca5a5' : '#DC2626') : (isDarkMode ? '#fde68a' : '#B45309'),
+                            border: item.status === 'APPROVED' ? '1px solid #10b981' : item.status === 'REJECTED' ? '1px solid #ef4444' : '1px solid #f59e0b'
+                          }}>
+                            {item.status}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '13px', color: theme.textSecondary, fontWeight: '600' }}>
+                          {item.request_type === 'PERMISSION' ? (
+                            <>⏱️ Date: {item.start_date} | Duration: {item.duration_hours || 2} Hours</>
+                          ) : item.request_type === 'HALF_DAY' ? (
+                            <>🌗 Date: {item.start_date} (Half Day)</>
+                          ) : (
+                            <>📅 {item.start_date} to {item.end_date}</>
+                          )}
+                        </div>
+                        <div style={{ fontSize: '13px', color: theme.textMuted, fontStyle: 'italic', backgroundColor: theme.cardBg, padding: '10px 12px', borderRadius: '10px', border: `1px solid ${theme.border}` }}>
+                          Reason: "{item.reason}"
+                        </div>
+                        {item.admin_remarks && (
+                          <div style={{ fontSize: '12px', color: isDarkMode ? '#818cf8' : '#4f46e5', fontWeight: '700' }}>
+                            Admin Remarks: {item.admin_remarks}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* DEDICATED PROFILE & ACCOUNT SETTINGS PAGE TAB */}
+          {activeTab === 'profile' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ padding: '16px 20px', borderRadius: '16px', backgroundColor: theme.cardInnerBg, border: `1px solid ${theme.border}`, display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: theme.textPrimary, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <User style={{ width: '22px', height: '22px', color: isDarkMode ? '#818cf8' : '#4f46e5' }} /> User Profile & Account Settings
+                  </h3>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: theme.textSecondary }}>
+                    View and update your personal employee information and credentials.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('punch')}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '10px',
+                    backgroundColor: isDarkMode ? '#27272a' : '#f1f5f9',
+                    border: `1px solid ${theme.border}`,
+                    color: theme.textPrimary,
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  Back to Portal
+                </button>
+              </div>
+
+              {/* PROFILE UPDATE FORM CARD */}
+              <div style={{ width: '100%', maxWidth: '800px', margin: '0 auto' }}>
+                <form
+                  onSubmit={handleUpdateProfile}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '20px',
+                    backgroundColor: theme.cardBg,
+                    padding: '24px',
+                    borderRadius: '20px',
+                    border: `1px solid ${theme.border}`,
+                    boxShadow: isDarkMode ? 'none' : '0 4px 12px rgba(15,23,42,0.04)'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', paddingBottom: '16px', borderBottom: `1px solid ${theme.border}` }}>
+                    <div style={{
+                      width: '48px',
+                      height: '48px',
+                      borderRadius: '50%',
+                      backgroundColor: isDarkMode ? '#27272a' : '#EEF2FF',
+                      color: isDarkMode ? '#818cf8' : '#4F46E5',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: '800',
+                      fontSize: '18px'
+                    }}>
+                      {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
+                    </div>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: theme.textPrimary }}>
+                        {currentUser?.name || 'Employee Profile'}
+                      </h4>
+                      <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: theme.textMuted }}>
+                        Employee ID: <span style={{ fontWeight: '800', color: isDarkMode ? '#818cf8' : '#4F46E5' }}>{currentUser?.emp_id}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* FULL NAME & EMPLOYEE ID */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+                    <div className="w-full">
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: theme.textSecondary, marginBottom: '6px' }}>Full Name *</label>
+                      <input 
+                        type="text" 
+                        required 
+                        placeholder="Enter Full Name" 
+                        value={profileForm.full_name} 
+                        onChange={(e) => setProfileForm({ ...profileForm, full_name: e.target.value })} 
+                        style={{ width: '100%', minWidth: 0, padding: '12px 14px', borderRadius: '10px', backgroundColor: theme.inputBg, border: `1px solid ${theme.inputBorder}`, fontSize: '13px', color: theme.textPrimary, boxSizing: 'border-box' }} 
+                      />
+                    </div>
+
+                    <div className="w-full">
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: theme.textSecondary, marginBottom: '6px' }}>Employee ID (Read Only)</label>
+                      <input 
+                        type="text" 
+                        disabled
+                        value={currentUser ? currentUser.emp_id : ''} 
+                        style={{ width: '100%', minWidth: 0, padding: '12px 14px', borderRadius: '10px', backgroundColor: isDarkMode ? '#1e1e24' : '#f1f5f9', border: `1px solid ${theme.border}`, fontSize: '13px', fontWeight: '800', color: isDarkMode ? '#818cf8' : '#4f46e5', boxSizing: 'border-box' }} 
+                      />
+                    </div>
+                  </div>
+
+                  {/* EMAIL & DESIGNATION */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+                    <div className="w-full">
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: theme.textSecondary, marginBottom: '6px' }}>Email Address *</label>
+                      <input 
+                        type="email" 
+                        required 
+                        placeholder="employee@company.com" 
+                        value={profileForm.email} 
+                        onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })} 
+                        style={{ width: '100%', minWidth: 0, padding: '12px 14px', borderRadius: '10px', backgroundColor: theme.inputBg, border: `1px solid ${theme.inputBorder}`, fontSize: '13px', color: theme.textPrimary, boxSizing: 'border-box' }} 
+                      />
+                    </div>
+
+                    <div className="w-full">
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: theme.textSecondary, marginBottom: '6px' }}>Designation</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. Full Stack Developer" 
+                        value={profileForm.designation} 
+                        onChange={(e) => setProfileForm({ ...profileForm, designation: e.target.value })} 
+                        style={{ width: '100%', minWidth: 0, padding: '12px 14px', borderRadius: '10px', backgroundColor: theme.inputBg, border: `1px solid ${theme.inputBorder}`, fontSize: '13px', color: theme.textPrimary, boxSizing: 'border-box' }} 
+                      />
+                    </div>
+                  </div>
+
+                  {/* DATE OF JOINING & PHONE NUMBER */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+                    <div className="w-full">
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: theme.textSecondary, marginBottom: '6px' }}>Date of Joining</label>
+                      <input 
+                        type="date" 
+                        value={profileForm.joining_date} 
+                        onChange={(e) => setProfileForm({ ...profileForm, joining_date: e.target.value })} 
+                        style={{ width: '100%', minWidth: 0, padding: '12px 14px', borderRadius: '10px', backgroundColor: theme.inputBg, border: `1px solid ${theme.inputBorder}`, fontSize: '13px', color: theme.textPrimary, boxSizing: 'border-box' }} 
+                      />
+                    </div>
+
+                    <div className="w-full">
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: theme.textSecondary, marginBottom: '6px' }}>Phone Number</label>
+                      <input 
+                        type="tel" 
+                        maxLength={10}
+                        placeholder="e.g. 9876543210" 
+                        value={profileForm.phone_number} 
+                        onChange={(e) => {
+                          const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 10);
+                          setProfileForm({ ...profileForm, phone_number: digitsOnly });
+                        }} 
+                        style={{ width: '100%', minWidth: 0, padding: '12px 14px', borderRadius: '10px', backgroundColor: theme.inputBg, border: `1px solid ${theme.inputBorder}`, fontSize: '13px', color: theme.textPrimary, boxSizing: 'border-box' }} 
+                      />
+                    </div>
+                  </div>
+
+                  {/* CHANGE PASSWORD */}
+                  <div className="w-full">
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: theme.textSecondary, marginBottom: '6px' }}>Change Password (Leave blank to keep existing)</label>
+                    <div style={{ position: 'relative' }}>
+                      <input 
+                        type={showNewPassword ? 'text' : 'password'} 
+                        placeholder="Enter new password" 
+                        value={profileForm.new_password} 
+                        onChange={(e) => setProfileForm({ ...profileForm, new_password: e.target.value })} 
+                        style={{ width: '100%', minWidth: 0, padding: '12px 42px 12px 14px', borderRadius: '10px', backgroundColor: theme.inputBg, border: `1px solid ${theme.inputBorder}`, fontSize: '13px', color: theme.textPrimary, boxSizing: 'border-box' }} 
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                        style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: theme.textSecondary }}
+                      >
+                        {showNewPassword ? <EyeOff style={{ width: '16px', height: '16px' }} /> : <Eye style={{ width: '16px', height: '16px' }} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* SUBMIT BUTTON */}
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '10px' }}>
+                    <button
+                      type="submit"
+                      disabled={isProcessing}
+                      style={{
+                        flex: 1,
+                        padding: '12px 20px',
+                        borderRadius: '10px',
+                        backgroundColor: isDarkMode ? '#6366f1' : '#4f46e5',
+                        color: '#ffffff',
+                        fontSize: '13px',
+                        fontWeight: '800',
+                        border: 'none',
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 12px rgba(79, 70, 229, 0.25)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      <Save style={{ width: '16px', height: '16px' }} />
+                      {isProcessing ? 'Updating Profile...' : 'Save Profile Changes'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
         </div>
+      </div>
+
+      {/* MOBILE BOTTOM NAVIGATION BAR (4 TABS for Mobile Screens) */}
+      <div 
+        className="md:hidden fixed bottom-0 left-0 right-0 backdrop-blur-md px-2 py-2.5 z-50 flex items-center justify-around shadow-lg"
+        style={{
+          backgroundColor: theme.mobileNavBg,
+          borderTop: `1px solid ${theme.border}`
+        }}
+      >
+        <button
+          onClick={() => setActiveTab('punch')}
+          className="flex flex-col items-center gap-1 text-[11px] font-bold transition-colors"
+          style={{ color: activeTab === 'punch' ? (isDarkMode ? '#818cf8' : '#4f46e5') : theme.textSecondary }}
+        >
+          <ShieldCheck style={{ width: '20px', height: '20px' }} />
+          <span>Punch</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('history')}
+          className="flex flex-col items-center gap-1 text-[11px] font-bold transition-colors"
+          style={{ color: activeTab === 'history' ? (isDarkMode ? '#818cf8' : '#4f46e5') : theme.textSecondary }}
+        >
+          <History style={{ width: '20px', height: '20px' }} />
+          <span>Logs</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('leave')}
+          className="flex flex-col items-center gap-1 text-[11px] font-bold transition-colors"
+          style={{ color: activeTab === 'leave' ? (isDarkMode ? '#818cf8' : '#4f46e5') : theme.textSecondary }}
+        >
+          <FileText style={{ width: '20px', height: '20px' }} />
+          <span>Leave</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('status')}
+          className="flex flex-col items-center gap-1 text-[11px] font-bold transition-colors"
+          style={{ color: activeTab === 'status' ? (isDarkMode ? '#818cf8' : '#4f46e5') : theme.textSecondary }}
+        >
+          <CheckCircle2 style={{ width: '20px', height: '20px' }} />
+          <span>Status</span>
+        </button>
       </div>
 
       {/* LOGIN MODAL */}
@@ -2404,8 +3052,8 @@ export default function AttendanceCheckIn() {
         <div style={{
           position: 'fixed',
           inset: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.6)',
-          backdropFilter: 'blur(4px)',
+          backgroundColor: isDarkMode ? 'rgba(0, 0, 0, 0.75)' : 'rgba(15, 23, 42, 0.6)',
+          backdropFilter: 'blur(6px)',
           zIndex: 100,
           display: 'flex',
           alignItems: 'center',
@@ -2415,20 +3063,20 @@ export default function AttendanceCheckIn() {
           <div style={{
             width: '100%',
             maxWidth: '380px',
-            backgroundColor: '#ffffff',
+            backgroundColor: theme.cardBg,
             borderRadius: '24px',
-            border: '1px solid #e2e8f0',
+            border: `1px solid ${theme.border}`,
             padding: '28px',
             textAlign: 'center',
-            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.15)'
+            boxShadow: isDarkMode ? '0 25px 50px rgba(0, 0, 0, 0.7)' : '0 20px 40px rgba(0, 0, 0, 0.15)'
           }}>
             <div style={{
               width: '60px',
               height: '60px',
               borderRadius: '50%',
-              backgroundColor: modalData.status === 'PRESENT' ? '#ECFDF5' : '#FFFBEB',
-              border: modalData.status === 'PRESENT' ? '1px solid #10b981' : '1px solid #f59e0b',
-              color: modalData.status === 'PRESENT' ? '#047857' : '#B45309',
+              backgroundColor: modalData.status === 'PRESENT' ? (isDarkMode ? '#064e3b' : '#ECFDF5') : (isDarkMode ? '#451a03' : '#FFFBEB'),
+              border: modalData.status === 'PRESENT' ? `1px solid ${isDarkMode ? '#065f46' : '#10b981'}` : `1px solid ${isDarkMode ? '#92400e' : '#f59e0b'}`,
+              color: modalData.status === 'PRESENT' ? (isDarkMode ? '#6ee7b7' : '#047857') : (isDarkMode ? '#fde68a' : '#B45309'),
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -2437,16 +3085,16 @@ export default function AttendanceCheckIn() {
               <CheckCircle2 style={{ width: '36px', height: '36px' }} />
             </div>
 
-            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#0f172a' }}>{modalData.message}</h3>
-            <p style={{ margin: '6px 0 18px 0', fontSize: '13px', color: '#64748b' }}>
-              Verified for <strong style={{ color: '#0f172a' }}>{modalData.employeeName}</strong> ({modalData.empId})
+            <h3 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: theme.textPrimary }}>{modalData.message}</h3>
+            <p style={{ margin: '6px 0 18px 0', fontSize: '13px', color: theme.textSecondary }}>
+              Verified for <strong style={{ color: theme.textPrimary }}>{modalData.employeeName}</strong> ({modalData.empId})
             </p>
 
             <div style={{
               padding: '14px',
               borderRadius: '14px',
-              backgroundColor: '#f8fafc',
-              border: '1px solid #e2e8f0',
+              backgroundColor: theme.cardInnerBg,
+              border: `1px solid ${theme.border}`,
               display: 'grid',
               gridTemplateColumns: '1fr 1fr',
               gap: '12px',
@@ -2454,12 +3102,12 @@ export default function AttendanceCheckIn() {
               marginBottom: '20px'
             }}>
               <div>
-                <span style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: '800' }}>Punch Time</span>
-                <p style={{ margin: '2px 0 0 0', fontSize: '13px', fontWeight: '800', color: '#0f172a' }}>{modalData.checkIn}</p>
+                <span style={{ fontSize: '10px', color: theme.textMuted, textTransform: 'uppercase', fontWeight: '800' }}>Punch Time</span>
+                <p style={{ margin: '2px 0 0 0', fontSize: '13px', fontWeight: '800', color: theme.textPrimary }}>{modalData.checkIn}</p>
               </div>
               <div>
-                <span style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: '800' }}>Status Badge</span>
-                <p style={{ margin: '2px 0 0 0', fontSize: '13px', fontWeight: '800', color: modalData.status === 'PRESENT' ? '#047857' : '#B45309' }}>
+                <span style={{ fontSize: '10px', color: theme.textMuted, textTransform: 'uppercase', fontWeight: '800' }}>Status Badge</span>
+                <p style={{ margin: '2px 0 0 0', fontSize: '13px', fontWeight: '800', color: modalData.status === 'PRESENT' ? (isDarkMode ? '#6ee7b7' : '#047857') : (isDarkMode ? '#fde68a' : '#B45309') }}>
                   {modalData.status}
                 </p>
               </div>
@@ -2491,7 +3139,7 @@ export default function AttendanceCheckIn() {
         <div style={{
           position: 'fixed',
           inset: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+          backgroundColor: isDarkMode ? 'rgba(0, 0, 0, 0.75)' : 'rgba(15, 23, 42, 0.65)',
           backdropFilter: 'blur(6px)',
           zIndex: 150,
           display: 'flex',
@@ -2504,12 +3152,12 @@ export default function AttendanceCheckIn() {
             maxWidth: 'min(400px, 92vw)',
             maxHeight: '90vh',
             overflowY: 'auto',
-            backgroundColor: '#ffffff',
+            backgroundColor: theme.cardBg,
             borderRadius: '24px',
-            border: '1px solid #e2e8f0',
+            border: `1px solid ${theme.border}`,
             padding: '24px',
             textAlign: 'center',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            boxShadow: isDarkMode ? '0 25px 50px rgba(0, 0, 0, 0.7)' : '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
             boxSizing: 'border-box',
             animation: 'fadeIn 0.2s ease-out'
           }}>
@@ -2517,9 +3165,9 @@ export default function AttendanceCheckIn() {
               width: '56px',
               height: '56px',
               borderRadius: '50%',
-              backgroundColor: notificationModal.type === 'success' ? '#ECFDF5' : '#FEF2F2',
-              border: notificationModal.type === 'success' ? '1px solid #10b981' : '1px solid #ef4444',
-              color: notificationModal.type === 'success' ? '#047857' : '#b91c1c',
+              backgroundColor: notificationModal.type === 'success' ? (isDarkMode ? '#064e3b' : '#ECFDF5') : (isDarkMode ? '#450a0a' : '#FEF2F2'),
+              border: notificationModal.type === 'success' ? `1px solid ${isDarkMode ? '#065f46' : '#10b981'}` : `1px solid ${isDarkMode ? '#991b1b' : '#ef4444'}`,
+              color: notificationModal.type === 'success' ? (isDarkMode ? '#6ee7b7' : '#047857') : (isDarkMode ? '#fca5a5' : '#b91c1c'),
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -2532,11 +3180,11 @@ export default function AttendanceCheckIn() {
               )}
             </div>
 
-            <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', fontWeight: '800', color: '#0f172a' }}>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', fontWeight: '800', color: theme.textPrimary }}>
               {notificationModal.title}
             </h3>
             
-            <p style={{ margin: '0 0 24px 0', fontSize: '13px', color: '#64748b', lineHeight: '1.5', whitespace: 'pre-line' }}>
+            <p style={{ margin: '0 0 24px 0', fontSize: '13px', color: theme.textSecondary, lineHeight: '1.5', whitespace: 'pre-line' }}>
               {notificationModal.message}
             </p>
 
@@ -2561,143 +3209,7 @@ export default function AttendanceCheckIn() {
         </div>
       )}
 
-      {/* EDIT PROFILE MODAL */}
-      {profileModalOpen && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.6)',
-          backdropFilter: 'blur(4px)',
-          zIndex: 140,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px'
-        }}>
-          <div style={{
-            width: '100%',
-            maxWidth: 'min(440px, 92vw)',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            backgroundColor: '#ffffff',
-            borderRadius: '24px',
-            border: '1px solid #e2e8f0',
-            padding: '24px',
-            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.15)',
-            boxSizing: 'border-box'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Edit3 style={{ width: '20px', height: '20px', color: '#4f46e5' }} /> Edit User Profile
-              </h3>
-              <button onClick={() => setProfileModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', color: '#64748b' }}>×</button>
-            </div>
 
-            <form onSubmit={handleUpdateProfile} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Employee ID</label>
-                <input 
-                  type="text" 
-                  disabled
-                  value={currentUser ? currentUser.emp_id : ''} 
-                  style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', fontSize: '13px', fontWeight: '800', color: '#4f46e5', boxSizing: 'border-box' }} 
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Full Name *</label>
-                <input 
-                  type="text" 
-                  required 
-                  value={profileForm.full_name} 
-                  onChange={(e) => setProfileForm({ ...profileForm, full_name: e.target.value })} 
-                  style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} 
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Email *</label>
-                <input 
-                  type="email" 
-                  required 
-                  value={profileForm.email} 
-                  onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })} 
-                  style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} 
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Designation</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. Software Engineer" 
-                  value={profileForm.designation} 
-                  onChange={(e) => setProfileForm({ ...profileForm, designation: e.target.value })} 
-                  style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} 
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Phone Number</label>
-                <input 
-                  type="tel" 
-                  placeholder="e.g. 9876543210" 
-                  value={profileForm.phone_number} 
-                  onChange={(e) => setProfileForm({ ...profileForm, phone_number: e.target.value })} 
-                  style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} 
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Joining Date</label>
-                <input 
-                  type="date" 
-                  value={profileForm.joining_date} 
-                  onChange={(e) => setProfileForm({ ...profileForm, joining_date: e.target.value })} 
-                  style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} 
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Change Password (Optional)</label>
-                <div style={{ position: 'relative' }}>
-                  <input 
-                    type={showNewPassword ? 'text' : 'password'} 
-                    placeholder="Enter new password to change" 
-                    value={profileForm.new_password} 
-                    onChange={(e) => setProfileForm({ ...profileForm, new_password: e.target.value })} 
-                    style={{ width: '100%', padding: '12px 40px 12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }} 
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowNewPassword(!showNewPassword)}
-                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
-                  >
-                    {showNewPassword ? <EyeOff style={{ width: '16px', height: '16px' }} /> : <Eye style={{ width: '16px', height: '16px' }} />}
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                <button
-                  type="button"
-                  onClick={() => setProfileModalOpen(false)}
-                  style={{ flex: 1, padding: '12px 0', borderRadius: '10px', backgroundColor: '#f1f5f9', color: '#334155', fontWeight: '700', fontSize: '13px', border: '1px solid #cbd5e1', cursor: 'pointer' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isProcessing}
-                  style={{ flex: 1, padding: '12px 0', borderRadius: '10px', backgroundColor: '#4f46e5', color: '#ffffff', fontWeight: '800', fontSize: '13px', border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(79, 70, 229, 0.25)' }}
-                >
-                  {isProcessing ? 'Saving...' : 'Save Changes'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* OFFICIAL GOOGLE IDENTITY SERVICES ONE-TAP MODAL */}
       {googleModalOpen && (

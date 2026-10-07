@@ -96,6 +96,7 @@ class LeaveRequest(models.Model):
     request_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='CASUAL')
     start_date = models.DateField()
     end_date = models.DateField()
+    duration_hours = models.FloatField(null=True, blank=True, help_text="Hours requested for PERMISSION type")
     reason = models.TextField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     admin_remarks = models.TextField(null=True, blank=True)

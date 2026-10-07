@@ -399,10 +399,17 @@ class SubmitLeaveRequestView(APIView):
         request_type = request.data.get('request_type', 'CASUAL').strip().upper()
         start_date = request.data.get('start_date', '').strip()
         end_date = request.data.get('end_date', '').strip()
+        duration_hours = request.data.get('duration_hours')
         reason = request.data.get('reason', '').strip()
 
-        if not emp_id or not start_date or not end_date or not reason:
-            return Response({"error": "Employee ID, Request Type, Start Date, End Date, and Reason are required."}, status=status.HTTP_400_BAD_REQUEST)
+        if request_type == 'PERMISSION':
+            if not end_date and start_date:
+                end_date = start_date
+            if not emp_id or not start_date or not duration_hours or not reason:
+                return Response({"error": "Employee ID, Request Date, Permission Hours, and Reason are required."}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            if not emp_id or not start_date or not end_date or not reason:
+                return Response({"error": "Employee ID, Request Type, Start Date, End Date, and Reason are required."}, status=status.HTTP_400_BAD_REQUEST)
 
         employee = Employee.objects.filter(emp_id__iexact=emp_id).first()
         if not employee:
@@ -413,16 +420,18 @@ class SubmitLeaveRequestView(APIView):
             request_type=request_type,
             start_date=start_date,
             end_date=end_date,
+            duration_hours=float(duration_hours) if duration_hours and request_type == 'PERMISSION' else None,
             reason=reason,
             status='PENDING'
         )
 
         return Response({
-            "message": "Leave request submitted successfully!",
+            "message": "Request submitted successfully!",
             "id": leave_req.id,
             "request_type": leave_req.request_type,
             "start_date": str(leave_req.start_date),
             "end_date": str(leave_req.end_date),
+            "duration_hours": leave_req.duration_hours,
             "reason": leave_req.reason,
             "status": leave_req.status,
             "created_at": leave_req.created_at.strftime('%Y-%m-%d %H:%M')
@@ -447,6 +456,7 @@ class MyLeaveRequestsView(APIView):
                 "request_type": req.request_type,
                 "start_date": str(req.start_date),
                 "end_date": str(req.end_date),
+                "duration_hours": req.duration_hours,
                 "reason": req.reason,
                 "status": req.status,
                 "admin_remarks": req.admin_remarks or '',

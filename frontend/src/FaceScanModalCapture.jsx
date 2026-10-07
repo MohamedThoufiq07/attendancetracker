@@ -10,7 +10,8 @@ export default function FaceScanModalCapture({
   description = "Center face scan required to activate attendance profile.",
   buttonText = "Open Face Scanner",
   resetOnCapture = false,
-  autoCapture = false
+  autoCapture = false,
+  isDarkMode = false
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -199,26 +200,38 @@ export default function FaceScanModalCapture({
     <div className="w-full">
       {/* 1. Normal View (Trigger Card) */}
       {!capturedImage || resetOnCapture ? (
-        <div className="border border-slate-200 rounded-2xl p-5 bg-slate-50 flex flex-wrap items-center justify-between gap-4">
+        <div className={`border rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4 transition-colors ${
+          isDarkMode 
+            ? 'border-zinc-800 bg-[#18181b]' 
+            : 'border-slate-200 bg-slate-50'
+        }`}>
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold transition-colors ${
+              isDarkMode 
+                ? 'bg-indigo-950/80 border border-indigo-800/60 text-indigo-400' 
+                : 'bg-indigo-100 text-indigo-600'
+            }`}>
               <Camera size={24} />
             </div>
             <div>
-              <h4 className="text-sm font-semibold text-slate-800">{title}</h4>
-              <p className="text-xs text-slate-500">{description}</p>
+              <h4 className={`text-sm font-semibold transition-colors ${isDarkMode ? 'text-zinc-100' : 'text-slate-800'}`}>{title}</h4>
+              <p className={`text-xs transition-colors ${isDarkMode ? 'text-zinc-400' : 'text-slate-500'}`}>{description}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => setIsOpen(true)}
-            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-sm transition"
+            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl text-xs font-semibold shadow-sm transition"
           >
             {buttonText}
           </button>
         </div>
       ) : (
-        <div className="border border-emerald-200 bg-emerald-50/60 rounded-2xl p-4 flex items-center justify-between">
+        <div className={`border rounded-2xl p-4 flex items-center justify-between transition-colors ${
+          isDarkMode 
+            ? 'border-emerald-900/60 bg-emerald-950/30' 
+            : 'border-emerald-200 bg-emerald-50/60'
+        }`}>
           <div className="flex items-center gap-3">
             <img
               src={capturedImage}
@@ -226,16 +239,25 @@ export default function FaceScanModalCapture({
               className="w-14 h-14 rounded-full object-cover border-2 border-emerald-500"
             />
             <div>
-              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800">
+              <div className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${
+                isDarkMode ? 'text-emerald-400' : 'text-emerald-800'
+              }`}>
                 <CheckCircle2 size={14} /> Face Verified & Locked
               </div>
-              <p className="text-[11px] text-slate-500">Ready to complete employee registration.</p>
+              <p className={`text-[11px] transition-colors ${isDarkMode ? 'text-zinc-400' : 'text-slate-500'}`}>Ready to complete employee registration.</p>
             </div>
           </div>
           <button
             type="button"
-            onClick={() => setIsOpen(true)}
-            className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-medium"
+            onClick={() => {
+              setCapturedImage(null);
+              setIsOpen(true);
+            }}
+            className={`px-3 py-1.5 border rounded-lg text-xs font-medium transition ${
+              isDarkMode 
+                ? 'border-zinc-700 bg-zinc-800/80 hover:bg-zinc-800 text-zinc-300' 
+                : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-700'
+            }`}
           >
             Retake
           </button>
