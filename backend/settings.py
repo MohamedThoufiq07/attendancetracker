@@ -64,11 +64,29 @@ except ImportError:
 
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    'https://attendancetrackers.vercel.app',
+    'https://attendancetracker-backend.vercel.app',
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:8000',
+]
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://.*\.netlify\.app$",
     r"^https://.*\.vercel\.app$",
     r"^http://localhost:\d+$",
     r"^http://127\.0\.0\.1:\d+$",
+]
+CSRF_TRUSTED_ORIGINS = [
+    'https://attendancetrackers.vercel.app',
+    'https://attendancetracker-backend.vercel.app',
+    'https://*.vercel.app',
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:8000',
 ]
 CORS_ALLOW_HEADERS = [
     'accept',
@@ -193,6 +211,11 @@ except ImportError:
 IS_VERCEL = not IS_LOCAL
 MEDIA_URL = '/media/'
 MEDIA_ROOT = Path('/tmp/media') if IS_VERCEL else BASE_DIR / 'media'
+if IS_VERCEL:
+    try:
+        os.makedirs('/tmp/media', exist_ok=True)
+    except Exception:
+        pass
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
