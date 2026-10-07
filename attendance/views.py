@@ -69,6 +69,29 @@ def get_tokens_for_employee(employee):
             'refresh_token': f"refresh_{employee.emp_id}",
         }
 
+def get_valid_employee_descriptor(emp):
+    """Returns valid 128-d face descriptor for emp, repairing dummy zero vectors if needed."""
+    if not emp:
+        return None
+    stored = emp.face_encoding
+    if stored and isinstance(stored, (list, tuple)) and len(stored) == 128:
+        if any(abs(x) > 1e-4 for x in stored):
+            return stored
+
+    if emp.profile_photo:
+        try:
+            pil_image = Image.open(emp.profile_photo).convert('RGB')
+            image_np = np.array(pil_image)
+            re_encoding = compute_face_encoding(image_np)
+            if re_encoding and len(re_encoding) == 128 and any(abs(x) > 1e-4 for x in re_encoding):
+                emp.face_encoding = re_encoding
+                emp.save(update_fields=['face_encoding'])
+                return re_encoding
+        except Exception:
+            pass
+
+    return None
+
 class EmployeeRegisterView(APIView):
     def post(self, request):
         full_name = request.data.get('full_name', '').strip()
@@ -133,12 +156,13 @@ class EmployeeRegisterView(APIView):
 
         # 1. DUPLICATE FACE CHECK ON REGISTRATION (dist < 0.52)
         if incoming_descriptor and len(incoming_descriptor) == 128:
-            existing_employees = Employee.objects.filter(is_active=True).exclude(emp_id__iexact=emp_id).exclude(face_encoding__isnull=True)
+            existing_employees = Employee.objects.filter(is_active=True).exclude(emp_id__iexact=emp_id)
             for emp in existing_employees:
-                if not emp.face_encoding or len(emp.face_encoding) != 128:
+                stored_desc = get_valid_employee_descriptor(emp)
+                if not stored_desc or len(stored_desc) != 128:
                     continue
                 import math
-                dist = math.sqrt(sum((a - b) ** 2 for a, b in zip(incoming_descriptor, emp.face_encoding)))
+                dist = math.sqrt(sum((a - b) ** 2 for a, b in zip(incoming_descriptor, stored_desc)))
                 if dist < 0.52:
                     return Response(
                         {"error": f"Face already registered under employee ID: {emp.emp_id}"},
@@ -203,6 +227,9 @@ class EmployeeLoginView(APIView):
         if password != 'google_oauth_bypass' and not employee.check_password(password):
             return Response({"error": "Invalid Email / Employee ID or Password. Please check your credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
+        # Auto-heal employee descriptor on login if needed
+        valid_desc = get_valid_employee_descriptor(employee)
+
         tokens = get_tokens_for_employee(employee)
 
         return Response({
@@ -211,7 +238,7 @@ class EmployeeLoginView(APIView):
             "full_name": employee.full_name,
             "email": employee.email,
             "designation": employee.designation,
-            "face_descriptor": employee.face_encoding,
+            "face_descriptor": valid_desc or employee.face_encoding,
             "access_token": tokens['access_token'],
             "refresh_token": tokens['refresh_token']
         }, status=status.HTTP_200_OK)
@@ -266,19 +293,20 @@ class MarkAttendanceView(APIView):
         if not captured_encoding:
             return Response({"error": "No face recognized in snapshot. Please capture a clear photo."}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
-        if not employee.face_encoding:
+        stored_desc = get_valid_employee_descriptor(employee)
+        if not stored_desc:
             employee.face_encoding = captured_encoding
             employee.save()
         else:
             is_match = False
-            if len(employee.face_encoding) == 128 and len(captured_encoding) == 128:
+            if len(stored_desc) == 128 and len(captured_encoding) == 128:
                 import math
-                distance = math.sqrt(sum((a - b) ** 2 for a, b in zip(captured_encoding, employee.face_encoding)))
+                distance = math.sqrt(sum((a - b) ** 2 for a, b in zip(captured_encoding, stored_desc)))
                 if distance <= 0.55:
                     is_match = True
 
-            if not is_match and len(employee.face_encoding) != len(captured_encoding):
-                is_match = compare_face_vectors(employee.face_encoding, captured_encoding)
+            if not is_match and len(stored_desc) != len(captured_encoding):
+                is_match = compare_face_vectors(stored_desc, captured_encoding)
 
             if not is_match:
                 return Response(

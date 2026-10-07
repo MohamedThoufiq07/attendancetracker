@@ -101,15 +101,32 @@ export default function FaceScanModalCapture({
     let descriptorArray = null;
 
     const api = faceapi || window.faceapi;
-    if (api && api.detectSingleFace && api.nets?.faceRecognitionNet?.isLoaded) {
+    if (api) {
       try {
-        const detection = await api.detectSingleFace(
-          video,
-          new api.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 })
-        ).withFaceLandmarks(true).withFaceDescriptor();
+        if (api.nets && api.nets.faceRecognitionNet && !api.nets.faceRecognitionNet.isLoaded) {
+          await api.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+        }
+        if (api.nets && api.nets.faceLandmark68TinyNet && !api.nets.faceLandmark68TinyNet.isLoaded) {
+          await api.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL);
+        }
+
+        let detection = null;
+        if (api.detectSingleFace) {
+          detection = await api.detectSingleFace(
+            video,
+            new api.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 })
+          ).withFaceLandmarks(true).withFaceDescriptor();
+        }
+
+        if (!detection && api.detectAllFaces) {
+          const raw = await api.detectAllFaces(
+            video,
+            new api.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 })
+          ).withFaceLandmarks(true).withFaceDescriptors();
+          if (raw && raw.length > 0) detection = raw[0];
+        }
 
         if (detection && detection.descriptor) {
-          // CRUCIAL: Must convert Float32Array to native array
           descriptorArray = Array.from(detection.descriptor);
         }
       } catch (e) {
