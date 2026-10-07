@@ -78,3 +78,33 @@ class Attendance(models.Model):
 
     def __str__(self):
         return f"{self.employee.emp_id} - {self.date} ({self.status})"
+
+class LeaveRequest(models.Model):
+    TYPE_CHOICES = (
+        ('SICK', 'Sick Leave'),
+        ('CASUAL', 'Casual Leave'),
+        ('HALF_DAY', 'Half Day Leave'),
+        ('PERMISSION', 'Permission Request'),
+    )
+    STATUS_CHOICES = (
+        ('PENDING', 'Pending'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+    )
+
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='leave_requests')
+    request_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='CASUAL')
+    start_date = models.DateField()
+    end_date = models.DateField()
+    reason = models.TextField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    admin_remarks = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.employee.emp_id} - {self.request_type} ({self.status})"
+

@@ -389,3 +389,106 @@ class UpdateProfileView(APIView):
             "phone_number": employee.phone_number or '',
             "joining_date": str(employee.joining_date) if employee.joining_date else ''
         }, status=status.HTTP_200_OK)
+
+
+from .models import LeaveRequest
+
+class SubmitLeaveRequestView(APIView):
+    def post(self, request):
+        emp_id = request.data.get('emp_id', '').strip()
+        request_type = request.data.get('request_type', 'CASUAL').strip().upper()
+        start_date = request.data.get('start_date', '').strip()
+        end_date = request.data.get('end_date', '').strip()
+        reason = request.data.get('reason', '').strip()
+
+        if not emp_id or not start_date or not end_date or not reason:
+            return Response({"error": "Employee ID, Request Type, Start Date, End Date, and Reason are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        employee = Employee.objects.filter(emp_id__iexact=emp_id).first()
+        if not employee:
+            return Response({"error": "Employee profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        leave_req = LeaveRequest.objects.create(
+            employee=employee,
+            request_type=request_type,
+            start_date=start_date,
+            end_date=end_date,
+            reason=reason,
+            status='PENDING'
+        )
+
+        return Response({
+            "message": "Leave request submitted successfully!",
+            "id": leave_req.id,
+            "request_type": leave_req.request_type,
+            "start_date": str(leave_req.start_date),
+            "end_date": str(leave_req.end_date),
+            "reason": leave_req.reason,
+            "status": leave_req.status,
+            "created_at": leave_req.created_at.strftime('%Y-%m-%d %H:%M')
+        }, status=status.HTTP_201_CREATED)
+
+
+class MyLeaveRequestsView(APIView):
+    def get(self, request):
+        emp_id = request.query_params.get('emp_id', '').strip()
+        if not emp_id:
+            return Response({"error": "emp_id query parameter is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        employee = Employee.objects.filter(emp_id__iexact=emp_id).first()
+        if not employee:
+            return Response({"error": "Employee profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        requests = LeaveRequest.objects.filter(employee=employee).order_by('-created_at')
+        data = []
+        for req in requests:
+            data.append({
+                "id": req.id,
+                "request_type": req.request_type,
+                "start_date": str(req.start_date),
+                "end_date": str(req.end_date),
+                "reason": req.reason,
+                "status": req.status,
+                "admin_remarks": req.admin_remarks or '',
+                "created_at": req.created_at.strftime('%Y-%m-%d %H:%M')
+            })
+
+        return Response({"leave_requests": data}, status=status.HTTP_200_OK)
+
+
+class LeaveActionView(APIView):
+    def post(self, request):
+        request_id = request.data.get('request_id')
+        action = request.data.get('action', '').strip().upper() # APPROVED or REJECTED
+        admin_remarks = request.data.get('admin_remarks', '').strip()
+
+        if not request_id or action not in ['APPROVED', 'REJECTED']:
+            return Response({"error": "request_id and valid action ('APPROVED' or 'REJECTED') are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        leave_req = LeaveRequest.objects.filter(id=request_id).first()
+        if not leave_req:
+            return Response({"error": "Leave request not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        leave_req.status = action
+        leave_req.admin_remarks = admin_remarks
+        leave_req.save()
+
+        # Map to Pay Slip Pro status key
+        payslip_pro_type = 'leave'
+        if leave_req.request_type == 'HALF_DAY':
+            payslip_pro_type = 'half_day'
+        elif leave_req.request_type == 'PERMISSION':
+            payslip_pro_type = 'perm'
+
+        return Response({
+            "message": f"Leave request {action.lower()} successfully!",
+            "id": leave_req.id,
+            "status": leave_req.status,
+            "payslip_pro_mapping": {
+                "emp_id": leave_req.employee.emp_id,
+                "start_date": str(leave_req.start_date),
+                "end_date": str(leave_req.end_date),
+                "status": payslip_pro_type
+            }
+        }, status=status.HTTP_200_OK)
+

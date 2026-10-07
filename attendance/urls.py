@@ -1,5 +1,9 @@
 from django.urls import path
-from .views import MarkAttendanceView, EmployeeRegisterView, AttendanceHistoryView, GeofenceConfigView, EmployeeLoginView, VerifyFaceView, UpdateProfileView
+from .views import (
+    MarkAttendanceView, EmployeeRegisterView, AttendanceHistoryView, 
+    GeofenceConfigView, EmployeeLoginView, VerifyFaceView, UpdateProfileView,
+    SubmitLeaveRequestView, MyLeaveRequestsView, LeaveActionView
+)
 from .payroll_sync import MonthlySummaryView, SyncToPayslipProView
 
 urlpatterns = [
@@ -12,4 +16,8 @@ urlpatterns = [
     path('history/', AttendanceHistoryView.as_view(), name='attendance-history'),
     path('monthly-summary/', MonthlySummaryView.as_view(), name='monthly-summary'),
     path('sync-to-payslippro/', SyncToPayslipProView.as_view(), name='sync-to-payslippro'),
+    path('leave-request/', SubmitLeaveRequestView.as_view(), name='leave-request'),
+    path('my-leaves/', MyLeaveRequestsView.as_view(), name='my-leaves'),
+    path('leave-action/', LeaveActionView.as_view(), name='leave-action'),
 ]
+

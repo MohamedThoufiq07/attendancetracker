@@ -31,6 +31,7 @@ import {
   EyeOff,
   ChevronDown,
   Edit3,
+  FileText,
   Menu,
   X
 } from 'lucide-react';
@@ -136,8 +137,86 @@ export default function AttendanceCheckIn() {
 
   
   // Navigation
-  const [activeTab, setActiveTab] = useState('punch'); // 'punch' | 'onboard' | 'history'
+  const [activeTab, setActiveTab] = useState('punch'); // 'punch' | 'onboard' | 'history' | 'leave'
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Leave & Permission states
+  const [leaveForm, setLeaveForm] = useState({
+    request_type: 'CASUAL',
+    start_date: '',
+    end_date: '',
+    reason: ''
+  });
+  const [myLeavesList, setMyLeavesList] = useState([]);
+  const [loadingLeaves, setLoadingLeaves] = useState(false);
+
+  const fetchMyLeaves = async () => {
+    if (!currentUser || !currentUser.emp_id) return;
+    setLoadingLeaves(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/attendance/my-leaves/?emp_id=${currentUser.emp_id}`);
+      const data = await res.json();
+      if (res.ok) {
+        setMyLeavesList(data.leave_requests || []);
+      }
+    } catch (err) {
+      console.warn("Error fetching leave requests:", err);
+    } finally {
+      setLoadingLeaves(false);
+    }
+  };
+
+  const handleLeaveSubmit = async (e) => {
+    e.preventDefault();
+    if (!currentUser) {
+      setNotificationModal({
+        type: 'error',
+        title: 'Authentication Required',
+        message: 'Please login to submit leave or permission requests.'
+      });
+      return;
+    }
+    setIsProcessing(true);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/attendance/leave-request/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          emp_id: currentUser.emp_id,
+          request_type: leaveForm.request_type,
+          start_date: leaveForm.start_date,
+          end_date: leaveForm.end_date,
+          reason: leaveForm.reason
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to submit leave request');
+
+      setNotificationModal({
+        type: 'success',
+        title: 'Request Submitted! 📝',
+        message: `Your ${leaveForm.request_type} request from ${leaveForm.start_date} to ${leaveForm.end_date} has been submitted for approval.`
+      });
+
+      setLeaveForm({
+        request_type: 'CASUAL',
+        start_date: '',
+        end_date: '',
+        reason: ''
+      });
+
+      fetchMyLeaves();
+    } catch (err) {
+      setNotificationModal({
+        type: 'error',
+        title: 'Submission Failed',
+        message: err.message
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   // Geofence states
   const [officeLat, setOfficeLat] = useState(() => parseFloat(localStorage.getItem('OFFICE_LAT')) || DEFAULT_OFFICE_LAT);
@@ -996,7 +1075,9 @@ export default function AttendanceCheckIn() {
   };
 
   useEffect(() => {
-    if (activeTab === 'history' && currentUser) {
+    if (activeTab === 'leave' && currentUser) {
+      fetchMyLeaves();
+    } else if (activeTab === 'history' && currentUser) {
       fetchHistory().then((records) => {
         fetchMonthlySummary(records);
       });
@@ -1107,6 +1188,26 @@ export default function AttendanceCheckIn() {
             >
               <History style={{ width: '16px', height: '16px' }} />
               Attendance Logs
+            </button>
+
+            <button
+              onClick={() => setActiveTab('leave')}
+              style={{
+                padding: '8px 14px',
+                borderRadius: '10px',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '13px',
+                fontWeight: '700',
+                backgroundColor: activeTab === 'leave' ? '#EEF2FF' : 'transparent',
+                color: activeTab === 'leave' ? '#4f46e5' : '#475569',
+              }}
+            >
+              <FileText style={{ width: '16px', height: '16px' }} />
+              Leave / Permission
             </button>
           </div>
 
@@ -1327,6 +1428,28 @@ export default function AttendanceCheckIn() {
               >
                 <History style={{ width: '16px', height: '16px' }} />
                 Attendance Logs
+              </button>
+
+              <button
+                onClick={() => { setActiveTab('leave'); setMobileMenuOpen(false); }}
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontSize: '13px',
+                  fontWeight: '700',
+                  backgroundColor: activeTab === 'leave' ? '#EEF2FF' : '#F8FAFC',
+                  color: activeTab === 'leave' ? '#4f46e5' : '#475569',
+                  textAlign: 'left'
+                }}
+              >
+                <FileText style={{ width: '16px', height: '16px' }} />
+                Leave / Permission
               </button>
 
               {!currentUser && (
@@ -2012,6 +2135,156 @@ export default function AttendanceCheckIn() {
                   ) : null}
                 </>
               )}
+            </div>
+          )}
+
+          {/* LEAVE & PERMISSION TAB WORKFLOW */}
+          {activeTab === 'leave' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div style={{ padding: '16px', borderRadius: '14px', backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <FileText style={{ width: '22px', height: '22px', color: '#4f46e5' }} /> Leave & Permission Requests
+                </h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
+                  Submit leave or permission requests for admin approval and automatic sync with Pay Slip Pro.
+                </p>
+              </div>
+
+              {/* REQUEST FORM & STATUS LIST GRID */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+                
+                {/* SUBMIT LEAVE REQUEST FORM */}
+                <form onSubmit={handleLeaveSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px', backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                  <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>Submit New Request</h4>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Request Type *</label>
+                    <select
+                      value={leaveForm.request_type}
+                      onChange={(e) => setLeaveForm({ ...leaveForm, request_type: e.target.value })}
+                      style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', fontWeight: '600', color: '#0f172a', boxSizing: 'border-box' }}
+                    >
+                      <option value="CASUAL">Casual Leave</option>
+                      <option value="SICK">Sick Leave</option>
+                      <option value="HALF_DAY">Half Day Leave</option>
+                      <option value="PERMISSION">Permission Request</option>
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Start Date *</label>
+                      <input
+                        type="date"
+                        required
+                        value={leaveForm.start_date}
+                        onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value })}
+                        style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>End Date *</label>
+                      <input
+                        type="date"
+                        required
+                        value={leaveForm.end_date}
+                        onChange={(e) => setLeaveForm({ ...leaveForm, end_date: e.target.value })}
+                        style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#475569', marginBottom: '6px' }}>Reason *</label>
+                    <textarea
+                      required
+                      rows={3}
+                      placeholder="Specify reason for leave/permission request..."
+                      value={leaveForm.reason}
+                      onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
+                      style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isProcessing}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      borderRadius: '10px',
+                      backgroundColor: '#4f46e5',
+                      color: '#ffffff',
+                      fontWeight: '800',
+                      fontSize: '13px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 12px rgba(79, 70, 229, 0.25)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    {isProcessing ? 'Submitting...' : 'Submit Request'}
+                  </button>
+                </form>
+
+                {/* MY REQUESTS HISTORY LIST */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', backgroundColor: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>Recent Requests & Status</h4>
+                    <button
+                      onClick={fetchMyLeaves}
+                      style={{ background: 'none', border: 'none', color: '#4f46e5', fontWeight: '700', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <RefreshCw style={{ width: '12px', height: '12px' }} /> Refresh
+                    </button>
+                  </div>
+
+                  {loadingLeaves ? (
+                    <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>Loading requests...</div>
+                  ) : myLeavesList.length === 0 ? (
+                    <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                      No leave/permission requests submitted yet.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '420px', overflowY: 'auto' }}>
+                      {myLeavesList.map((item) => (
+                        <div key={item.id} style={{ padding: '14px', borderRadius: '12px', border: '1px solid #f1f5f9', backgroundColor: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '13px', fontWeight: '800', color: '#0f172a' }}>{item.request_type}</span>
+                            <span style={{
+                              padding: '3px 8px',
+                              borderRadius: '12px',
+                              fontSize: '10px',
+                              fontWeight: '800',
+                              backgroundColor: item.status === 'APPROVED' ? '#ECFDF5' : item.status === 'REJECTED' ? '#FEF2F2' : '#FFFBEB',
+                              color: item.status === 'APPROVED' ? '#047857' : item.status === 'REJECTED' ? '#DC2626' : '#B45309',
+                              border: item.status === 'APPROVED' ? '1px solid #A7F3D0' : item.status === 'REJECTED' ? '1px solid #FECACA' : '1px solid #FDE68A'
+                            }}>
+                              {item.status}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#475569', fontWeight: '600' }}>
+                            📅 {item.start_date} to {item.end_date}
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>
+                            "{item.reason}"
+                          </div>
+                          {item.admin_remarks && (
+                            <div style={{ fontSize: '11px', color: '#4f46e5', fontWeight: '700', marginTop: '2px' }}>
+                              Admin Note: {item.admin_remarks}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+              </div>
             </div>
           )}
 
