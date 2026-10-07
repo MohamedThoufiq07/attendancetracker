@@ -7,11 +7,26 @@ parent_dir = os.path.dirname(current_dir)
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-# Inspect manage.py or wsgi.py to get the exact settings module name (e.g., 'backend.settings' or 'core.settings')
-# Set the matching DJANGO_SETTINGS_MODULE below:
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
 
 from django.core.wsgi import get_wsgi_application
 
-# Vercel looks for the WSGI/ASGI 'app' callable
-app = get_wsgi_application()
+django_app = get_wsgi_application()
+
+def app(environ, start_response):
+    # Fix PATH_INFO on Vercel Serverless
+    # Vercel sets PATH_INFO to '/api/index.py' when rewriting requests.
+    # The actual requested URL is passed in HTTP_X_MATCHED_PATH or REQUEST_URI or RAW_URI.
+    path_info = environ.get('PATH_INFO', '')
+    if '/api/index.py' in path_info or path_info == '/api/index.py':
+        actual_path = (
+            environ.get('HTTP_X_MATCHED_PATH') or 
+            environ.get('REQUEST_URI') or 
+            environ.get('RAW_URI') or 
+            '/'
+        )
+        # Strip query strings if present
+        actual_path = actual_path.split('?')[0]
+        environ['PATH_INFO'] = actual_path
+
+    return django_app(environ, start_response)
