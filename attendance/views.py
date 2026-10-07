@@ -115,15 +115,35 @@ class EmployeeRegisterView(APIView):
         except Exception as e:
             return Response({"error": f"Failed to process face image: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Prevent duplicate face registration across active employees (excluding same emp_id)
-        if encoding:
+        # Extract face_descriptor if sent directly from frontend face-api
+        face_descriptor_raw = request.data.get('face_descriptor')
+        if face_descriptor_raw:
+            if isinstance(face_descriptor_raw, str):
+                import json
+                try:
+                    parsed = json.loads(face_descriptor_raw)
+                    if isinstance(parsed, (list, tuple)) and len(parsed) > 0:
+                        encoding = parsed
+                except Exception:
+                    pass
+            elif isinstance(face_descriptor_raw, (list, tuple)) and len(face_descriptor_raw) > 0:
+                encoding = list(face_descriptor_raw)
+
+        # 1. DUPLICATE FACE CHECK ON REGISTRATION (distance < 0.45)
+        if encoding and len(encoding) > 0:
+            new_descriptor = np.array(encoding, dtype=np.float32)
             existing_employees = Employee.objects.filter(is_active=True).exclude(emp_id__iexact=emp_id).exclude(face_encoding__isnull=True)
-            for existing_emp in existing_employees:
-                if existing_emp.face_encoding and len(existing_emp.face_encoding) > 0:
-                    if compare_face_vectors(existing_emp.face_encoding, encoding):
-                        return Response({
-                            "error": f"Registration rejected! This face is already registered to employee '{existing_emp.full_name}' ({existing_emp.emp_id}). The same face cannot be re-registered for a different account."
-                        }, status=status.HTTP_400_BAD_REQUEST)
+            for emp in existing_employees:
+                if not emp.face_encoding or len(emp.face_encoding) == 0:
+                    continue
+                stored_descriptor = np.array(emp.face_encoding, dtype=np.float32)
+                if len(new_descriptor) == len(stored_descriptor):
+                    distance = float(np.linalg.norm(new_descriptor - stored_descriptor))
+                    if distance < 0.45:
+                        return Response(
+                            {"error": f"This face is already registered under employee ID: {emp.emp_id}"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
 
         employee = Employee.objects.create(
             emp_id=emp_id,
@@ -148,6 +168,7 @@ class EmployeeRegisterView(APIView):
             "emp_id": emp_id,
             "full_name": full_name,
             "email": email,
+            "face_descriptor": employee.face_encoding,
             "access_token": tokens['access_token'],
             "refresh_token": tokens['refresh_token'],
             "created": True
@@ -190,6 +211,7 @@ class EmployeeLoginView(APIView):
             "full_name": employee.full_name,
             "email": employee.email,
             "designation": employee.designation,
+            "face_descriptor": employee.face_encoding,
             "access_token": tokens['access_token'],
             "refresh_token": tokens['refresh_token']
         }, status=status.HTTP_200_OK)
@@ -203,8 +225,8 @@ class MarkAttendanceView(APIView):
         image_file = request.FILES.get('face_image')
 
         # 1. Validation Checks
-        if not emp_id or not image_file or not user_lat or not user_lng:
-            return Response({"error": "Missing required fields (emp_id, face_image, latitude, longitude)"}, status=status.HTTP_400_BAD_REQUEST)
+        if not emp_id or not user_lat or not user_lng:
+            return Response({"error": "Missing required fields (emp_id, latitude, longitude)"}, status=status.HTTP_400_BAD_REQUEST)
 
         # 2. Geofence Distance Check
         dist = haversine_distance(ZIGMA_OFFICE_LAT, ZIGMA_OFFICE_LNG, user_lat, user_lng)
@@ -218,13 +240,28 @@ class MarkAttendanceView(APIView):
         if not employee:
             return Response({"error": f"Employee ID '{emp_id}' is not registered in the system yet. Please click 'Register' tab to create your employee profile first!"}, status=status.HTTP_404_NOT_FOUND)
 
-        # 4. Face Recognition Matching
-        try:
-            pil_image = Image.open(image_file).convert('RGB')
-            uploaded_image_np = np.array(pil_image)
-            captured_encoding = compute_face_encoding(uploaded_image_np)
-        except Exception as e:
-            return Response({"error": "Could not parse uploaded face image"}, status=status.HTTP_400_BAD_REQUEST)
+        # 4. Strict 1:1 Face Recognition Verification
+        captured_encoding = None
+        face_descriptor_raw = request.data.get('face_descriptor')
+        if face_descriptor_raw:
+            if isinstance(face_descriptor_raw, str):
+                import json
+                try:
+                    parsed = json.loads(face_descriptor_raw)
+                    if isinstance(parsed, (list, tuple)) and len(parsed) > 0:
+                        captured_encoding = parsed
+                except Exception:
+                    pass
+            elif isinstance(face_descriptor_raw, (list, tuple)) and len(face_descriptor_raw) > 0:
+                captured_encoding = list(face_descriptor_raw)
+
+        if not captured_encoding and image_file:
+            try:
+                pil_image = Image.open(image_file).convert('RGB')
+                uploaded_image_np = np.array(pil_image)
+                captured_encoding = compute_face_encoding(uploaded_image_np)
+            except Exception as e:
+                return Response({"error": "Could not parse uploaded face image"}, status=status.HTTP_400_BAD_REQUEST)
 
         if not captured_encoding:
             return Response({"error": "No face recognized in snapshot. Please capture a clear photo."}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
@@ -232,25 +269,24 @@ class MarkAttendanceView(APIView):
         if not employee.face_encoding:
             employee.face_encoding = captured_encoding
             employee.save()
-            is_match = True
         else:
-            is_match = compare_face_vectors(employee.face_encoding, captured_encoding)
+            stored_descriptor = np.array(employee.face_encoding, dtype=np.float32)
+            new_descriptor = np.array(captured_encoding, dtype=np.float32)
 
-        if not is_match and employee.profile_photo:
-            try:
-                prof_img = Image.open(employee.profile_photo).convert('RGB')
-                prof_np = np.array(prof_img)
+            is_match = False
+            if len(stored_descriptor) == len(new_descriptor):
+                distance = float(np.linalg.norm(new_descriptor - stored_descriptor))
+                if distance <= 0.45:
+                    is_match = True
 
-                fresh_encoding = compute_face_encoding(prof_np)
-                if fresh_encoding:
-                    employee.face_encoding = fresh_encoding
-                    employee.save()
-                    is_match = compare_face_vectors(fresh_encoding, captured_encoding)
-            except Exception:
-                pass
+            if not is_match and len(stored_descriptor) != len(new_descriptor):
+                is_match = compare_face_vectors(employee.face_encoding, captured_encoding)
 
-        if not is_match:
-            return Response({"error": "Face verification mismatch! Captured face does not match the registered employee photo."}, status=status.HTTP_401_UNAUTHORIZED)
+            if not is_match:
+                return Response(
+                    {"error": "Face mismatch! Only the registered employee can punch."},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
 
         # 5. Timestamp & Late Calculation
         now = timezone.localtime(timezone.now())

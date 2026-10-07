@@ -811,6 +811,7 @@ export default function AttendanceCheckIn() {
         emp_id: data.emp_id,
         name: data.full_name,
         email: data.email,
+        face_descriptor: data.face_descriptor,
         role: 'Employee'
       }, { access_token: data.access_token, refresh_token: data.refresh_token });
 
@@ -857,6 +858,7 @@ export default function AttendanceCheckIn() {
         emp_id: data.emp_id,
         name: data.full_name,
         email: data.email,
+        face_descriptor: data.face_descriptor,
         role: 'Employee'
       }, { access_token: data.access_token, refresh_token: data.refresh_token });
 
@@ -1797,6 +1799,8 @@ export default function AttendanceCheckIn() {
                   resetOnCapture={true}
                   autoCapture={true}
                   isDarkMode={isDarkMode}
+                  currentUserDescriptor={currentUser?.face_descriptor || currentUser?.face_encoding}
+                  currentUserName={currentUser?.name || currentUser?.full_name || 'Employee'}
                   onFaceCaptured={(blob) => handlePunchAttendance(blob)} 
                 />
               ) : (

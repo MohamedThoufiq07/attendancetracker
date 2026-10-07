@@ -11,7 +11,9 @@ export default function FaceScanModalCapture({
   buttonText = "Open Face Scanner",
   resetOnCapture = false,
   autoCapture = false,
-  isDarkMode = false
+  isDarkMode = false,
+  currentUserDescriptor = null,
+  currentUserName = "Employee"
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -50,7 +52,15 @@ export default function FaceScanModalCapture({
         const api = faceapi || window.faceapi;
         if (api && api.nets) {
           try {
-            await api.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+            if (!api.nets.tinyFaceDetector.isLoaded) {
+              await api.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+            }
+            if (api.nets.faceLandmark68TinyNet && !api.nets.faceLandmark68TinyNet.isLoaded) {
+              await api.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL);
+            }
+            if (api.nets.faceRecognitionNet && !api.nets.faceRecognitionNet.isLoaded) {
+              await api.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+            }
           } catch (e) {
             console.warn("CDN model load notice:", e);
           }
@@ -82,10 +92,10 @@ export default function FaceScanModalCapture({
     };
   }, [isOpen]);
 
-  const [faceStatus, setFaceStatus] = useState({ valid: false, count: 0, text: 'Align face inside the center oval' });
+  const [faceStatus, setFaceStatus] = useState({ valid: false, count: 0, isMismatch: false, text: 'Align face inside the center oval' });
 
   const handleCapture = () => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || faceStatus.isMismatch) return;
 
     const video = videoRef.current;
     const offCanvas = document.createElement('canvas');
@@ -131,19 +141,35 @@ export default function FaceScanModalCapture({
       if (!video || video.paused || video.ended || !isOpen) return;
 
       let detections = [];
-      if (api && api.detectAllFaces) {
+      let singleFaceDetection = null;
+
+      // 1. Try detectSingleFace with landmarks and descriptor if faceRecognitionNet is loaded
+      if (api && api.detectSingleFace && api.nets?.faceRecognitionNet?.isLoaded) {
+        try {
+          singleFaceDetection = await api.detectSingleFace(
+            video,
+            new api.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 })
+          ).withFaceLandmarks(true).withFaceDescriptor();
+
+          if (singleFaceDetection) {
+            detections = [singleFaceDetection];
+          }
+        } catch (e) {}
+      }
+
+      // 2. Fallback to detectAllFaces if detectSingleFace didn't return
+      if (detections.length === 0 && api && api.detectAllFaces) {
         try {
           const rawDetections = await api.detectAllFaces(
             video,
             new api.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 })
           );
-          if (api.resizeResults) {
-            detections = api.resizeResults(rawDetections, displaySize);
-          } else {
-            detections = rawDetections;
-          }
+          detections = api.resizeResults ? api.resizeResults(rawDetections, displaySize) : rawDetections;
         } catch (e) {}
-      } else if ('FaceDetector' in window) {
+      }
+
+      // 3. Fallback to native FaceDetector if available
+      if (detections.length === 0 && 'FaceDetector' in window) {
         try {
           const nativeDetector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 5 });
           const faces = await nativeDetector.detect(video);
@@ -152,15 +178,16 @@ export default function FaceScanModalCapture({
       }
 
       const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height); // Keep canvas clean (no square rectangles)
+      ctx.clearRect(0, 0, canvas.width, canvas.height); // Keep canvas clean
 
       const detectedCount = detections.length;
 
       if (detectedCount > 1) {
         autoCapturedRef.current = false;
-        setFaceStatus({ valid: false, count: detectedCount, text: '⚠️ Multiple faces detected! Only 1 person allowed.' });
+        setFaceStatus({ valid: false, count: detectedCount, isMismatch: false, text: '⚠️ Multiple faces detected! Only 1 person allowed.' });
       } else if (detectedCount === 1) {
-        const box = detections[0].box || detections[0];
+        const det = detections[0];
+        const box = det.box || det.detection?.box || det;
         const faceCenterX = box.x + box.width / 2;
         const faceCenterY = box.y + box.height / 2;
         const viewCenterX = displaySize.width / 2;
@@ -168,9 +195,39 @@ export default function FaceScanModalCapture({
 
         const deltaX = Math.abs(faceCenterX - viewCenterX);
         const deltaY = Math.abs(faceCenterY - viewCenterY);
+        const isCentered = deltaX <= 90 && deltaY <= 90;
 
-        if (deltaX <= 75 && deltaY <= 75) {
-          setFaceStatus({ valid: true, count: 1, text: autoCapture ? '✓ Face Aligned — Auto Punching...' : '✓ Single Face Aligned & Verified' });
+        // Perform strict 1:1 Euclidean Distance Verification against currentUserDescriptor
+        let isFaceMatched = true;
+        let liveDescriptor = det.descriptor ? Array.from(det.descriptor) : null;
+        let calculatedDistance = null;
+
+        if (liveDescriptor && currentUserDescriptor && Array.isArray(currentUserDescriptor) && currentUserDescriptor.length === liveDescriptor.length) {
+          if (api && api.euclideanDistance) {
+            calculatedDistance = api.euclideanDistance(liveDescriptor, currentUserDescriptor);
+          } else {
+            calculatedDistance = Math.sqrt(liveDescriptor.reduce((sum, val, idx) => sum + Math.pow(val - currentUserDescriptor[idx], 2), 0));
+          }
+          if (calculatedDistance > 0.45) {
+            isFaceMatched = false;
+          }
+        }
+
+        if (!isFaceMatched) {
+          autoCapturedRef.current = false;
+          setFaceStatus({
+            valid: false,
+            count: 1,
+            isMismatch: true,
+            text: 'Face mismatch! Only the registered employee can punch.'
+          });
+        } else if (isCentered) {
+          setFaceStatus({
+            valid: true,
+            count: 1,
+            isMismatch: false,
+            text: autoCapture ? `✓ Face Verified: ${currentUserName}` : '✓ Single Face Aligned & Verified'
+          });
           if (autoCapture && !autoCapturedRef.current) {
             autoCapturedRef.current = true;
             setTimeout(() => {
@@ -179,11 +236,16 @@ export default function FaceScanModalCapture({
           }
         } else {
           autoCapturedRef.current = false;
-          setFaceStatus({ valid: false, count: 1, text: 'Position face inside the green center oval' });
+          setFaceStatus({
+            valid: false,
+            count: 1,
+            isMismatch: false,
+            text: 'Position face inside the green center oval'
+          });
         }
       } else {
         autoCapturedRef.current = false;
-        setFaceStatus({ valid: false, count: 0, text: 'Align face inside the center oval' });
+        setFaceStatus({ valid: false, count: 0, isMismatch: false, text: 'Align face inside the center oval' });
       }
     }, 120);
 
@@ -312,16 +374,14 @@ export default function FaceScanModalCapture({
                     className="absolute inset-0 w-full h-full pointer-events-none transform -scale-x-100"
                   />
 
-                  {/* Compact Face Shape Target Oval (165px x 210px) */}
+                  {/* Face Target Oval (Green Box for Verified, Red Box for Mismatch / Multiple) */}
                   <div className={`absolute w-[165px] h-[210px] rounded-[50%] pointer-events-none transition-all duration-300 ${
                     faceStatus.valid
                       ? 'border-4 border-emerald-400 shadow-[0_0_25px_rgba(52,211,153,0.5)] scale-102'
-                      : faceStatus.count > 1
+                      : (faceStatus.count > 1 || faceStatus.isMismatch)
                       ? 'border-4 border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.5)]'
                       : 'border-2 border-dashed border-slate-400/80'
                   }`} />
-
-
 
                   {/* Status Tag */}
                   <div className="absolute top-3 left-3 z-10">
@@ -329,7 +389,7 @@ export default function FaceScanModalCapture({
                       <span className="flex items-center gap-1 bg-emerald-950/90 border border-emerald-500 text-emerald-300 px-2.5 py-1 rounded-full text-[11px] font-semibold">
                         <CheckCircle2 size={12} /> {faceStatus.text}
                       </span>
-                    ) : faceStatus.count > 1 ? (
+                    ) : (faceStatus.count > 1 || faceStatus.isMismatch) ? (
                       <span className="flex items-center gap-1 bg-red-950/90 border border-red-500 text-red-300 px-2.5 py-1 rounded-full text-[11px] font-semibold">
                         <AlertCircle className="text-red-400" size={12} /> {faceStatus.text}
                       </span>
@@ -343,21 +403,32 @@ export default function FaceScanModalCapture({
               )}
             </div>
 
-            {/* Modal Bottom Action (Auto-Punch vs Registration Manual Capture) */}
+            {/* Modal Bottom Action */}
             {autoCapture ? (
               <div className={`mt-4 w-full py-3 px-4 rounded-xl flex items-center justify-center gap-2 font-semibold text-sm transition ${
                 faceStatus.valid
                   ? 'bg-emerald-600 text-white shadow-lg animate-pulse'
+                  : faceStatus.isMismatch
+                  ? 'bg-red-950 border border-red-700 text-red-300'
                   : 'bg-slate-800 text-slate-400 border border-slate-700'
               }`}>
-                <RefreshCw className={faceStatus.valid ? "animate-spin text-white" : "text-slate-500"} size={16} />
-                <span>{faceStatus.valid ? '✓ Face Aligned — Punching Automatically...' : faceStatus.count > 1 ? 'Multiple faces found - 1 face only' : 'Hold still... Auto-punching when aligned'}</span>
+                {faceStatus.valid && <RefreshCw className="animate-spin text-white" size={16} />}
+                {faceStatus.isMismatch && <AlertCircle className="text-red-400" size={16} />}
+                <span>
+                  {faceStatus.valid 
+                    ? `✓ ${currentUserName} Verified — Punching Automatically...` 
+                    : faceStatus.isMismatch 
+                    ? 'Face mismatch! Only the registered employee can punch.' 
+                    : faceStatus.count > 1 
+                    ? 'Multiple faces found - 1 face only' 
+                    : 'Hold still... Auto-punching when aligned'}
+                </span>
               </div>
             ) : (
               <button
                 type="button"
                 onClick={handleCapture}
-                disabled={!faceStatus.valid}
+                disabled={!faceStatus.valid || faceStatus.isMismatch}
                 className={`mt-4 w-full py-3 px-4 rounded-xl flex items-center justify-center gap-2 font-semibold text-sm transition ${
                   faceStatus.valid
                     ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg cursor-pointer active:scale-95'
@@ -365,7 +436,13 @@ export default function FaceScanModalCapture({
                 }`}
               >
                 <Camera size={16} />
-                {faceStatus.valid ? 'Capture & Confirm' : faceStatus.count > 1 ? 'Multiple faces found - 1 face only' : 'Align face inside center oval'}
+                {faceStatus.valid 
+                  ? 'Capture & Confirm' 
+                  : faceStatus.isMismatch 
+                  ? 'Face mismatch! Only the registered employee can punch.' 
+                  : faceStatus.count > 1 
+                  ? 'Multiple faces found - 1 face only' 
+                  : 'Align face inside center oval'}
               </button>
             )}
           </div>
