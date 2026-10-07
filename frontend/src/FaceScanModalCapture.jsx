@@ -21,12 +21,14 @@ export default function FaceScanModalCapture({
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [capturedImage, setCapturedImage] = useState(null);
+  const [scanProgress, setScanProgress] = useState(0);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const autoCapturedRef = useRef(false);
   const handleCaptureRef = useRef(null);
+  const scanProgressRef = useRef(0);
 
   // Stop camera tracks cleanly
   const stopCamera = () => {
@@ -49,6 +51,8 @@ export default function FaceScanModalCapture({
       setLoading(true);
       setErrorMessage('');
       autoCapturedRef.current = false;
+      scanProgressRef.current = 0;
+      setScanProgress(0);
 
       try {
         const api = faceapi || window.faceapi;
@@ -94,10 +98,10 @@ export default function FaceScanModalCapture({
     };
   }, [isOpen]);
 
-  const [faceStatus, setFaceStatus] = useState({ valid: false, count: 0, isMismatch: false, text: 'Align face inside the center oval' });
+  const [faceStatus, setFaceStatus] = useState({ valid: false, count: 0, isMismatch: false, isCovered: false, text: 'Align face inside the center oval' });
 
   const handleCapture = async () => {
-    if (!videoRef.current || faceStatus.isMismatch) return;
+    if (!videoRef.current || faceStatus.isMismatch || faceStatus.isCovered) return;
 
     const video = videoRef.current;
     let descriptorArray = null;
@@ -222,7 +226,9 @@ export default function FaceScanModalCapture({
 
       if (detectedCount > 1) {
         autoCapturedRef.current = false;
-        setFaceStatus({ valid: false, count: detectedCount, isMismatch: false, text: '⚠️ Multiple faces detected! Only 1 person allowed.' });
+        scanProgressRef.current = 0;
+        setScanProgress(0);
+        setFaceStatus({ valid: false, count: detectedCount, isMismatch: true, isCovered: false, text: '⚠️ Multiple faces detected! Only 1 person allowed.' });
       } else if (detectedCount === 1) {
         const det = detections[0];
         const box = det.box || det.detection?.box || det;
@@ -234,6 +240,26 @@ export default function FaceScanModalCapture({
         const deltaX = Math.abs(faceCenterX - viewCenterX);
         const deltaY = Math.abs(faceCenterY - viewCenterY);
         const isCentered = deltaX <= 110 && deltaY <= 110;
+
+        // Check for face obstruction / mask / cloth covering lower face
+        let isCoveredFace = false;
+        if (det.landmarks && det.landmarks.positions && det.landmarks.positions.length >= 68) {
+          const mouth = det.landmarks.getMouth();
+          const nose = det.landmarks.getNose();
+          if (!mouth || !nose || mouth.length < 4 || nose.length < 3) {
+            isCoveredFace = true;
+          } else {
+            const noseTip = nose[3] || nose[nose.length - 1];
+            const mouthTop = mouth[0] || mouth[14];
+            const mouthBottom = mouth[3] || mouth[18];
+            const noseToMouth = Math.abs(mouthTop.y - noseTip.y);
+            const mouthHeight = Math.abs(mouthBottom.y - mouthTop.y);
+
+            if (noseToMouth < 4 || mouthHeight < 4) {
+              isCoveredFace = true;
+            }
+          }
+        }
 
         let liveDescriptor = det.descriptor ? Array.from(det.descriptor) : null;
         let isFaceMatched = true;
@@ -276,52 +302,82 @@ export default function FaceScanModalCapture({
           }
         }
 
-        if (isDuplicateFace) {
+        if (isCoveredFace) {
           autoCapturedRef.current = false;
+          scanProgressRef.current = 0;
+          setScanProgress(0);
           setFaceStatus({
             valid: false,
             count: 1,
             isMismatch: true,
+            isCovered: true,
+            text: '⚠️ Lower face covered! Remove mask, cloth, or hand.'
+          });
+        } else if (isDuplicateFace) {
+          autoCapturedRef.current = false;
+          scanProgressRef.current = 0;
+          setScanProgress(0);
+          setFaceStatus({
+            valid: false,
+            count: 1,
+            isMismatch: true,
+            isCovered: false,
             text: `Face already registered under employee ID: ${duplicateEmpId}`
           });
         } else if (!isFaceMatched) {
           autoCapturedRef.current = false;
+          scanProgressRef.current = 0;
+          setScanProgress(0);
           setFaceStatus({
             valid: false,
             count: 1,
             isMismatch: true,
+            isCovered: false,
             text: 'Face mismatch! Only the registered employee can punch.'
           });
         } else if (isCentered) {
+          // Increment scan progress ring 0% -> 100% smoothly over ~0.6 sec
+          scanProgressRef.current = Math.min(100, scanProgressRef.current + 18);
+          setScanProgress(scanProgressRef.current);
+
           const matchPercent = calculatedDistance !== null ? Math.round((1 - calculatedDistance) * 100) : 100;
-          const statusText = autoCapture 
-            ? (mode === 'register' ? '✓ Face Aligned — Auto Capturing Photo...' : `✓ Face Verified (${matchPercent}% match) — Auto Punching...`)
-            : (mode === 'register' ? '✓ Face Aligned & Verified' : `✓ Face Verified (${matchPercent}% match)`);
+          const statusText = scanProgressRef.current < 100
+            ? `🔍 Scanning biometrics... ${scanProgressRef.current}%`
+            : autoCapture 
+            ? (mode === 'register' ? '✓ Biometrics Verified (100%) — Capturing Photo...' : `✓ Face Verified (${matchPercent}% match) — Auto Punching...`)
+            : (mode === 'register' ? '✓ Biometrics Verified (100%)' : `✓ Face Verified (${matchPercent}% match)`);
 
           setFaceStatus({
-            valid: true,
+            valid: scanProgressRef.current >= 100,
             count: 1,
             isMismatch: false,
+            isCovered: false,
             text: statusText
           });
-          if (autoCapture && !autoCapturedRef.current) {
+
+          if (scanProgressRef.current >= 100 && autoCapture && !autoCapturedRef.current) {
             autoCapturedRef.current = true;
             setTimeout(() => {
               if (handleCaptureRef.current) handleCaptureRef.current();
-            }, 100);
+            }, 120);
           }
         } else {
           autoCapturedRef.current = false;
+          scanProgressRef.current = 0;
+          setScanProgress(0);
           setFaceStatus({
             valid: false,
             count: 1,
             isMismatch: false,
-            text: 'Position face inside the green center oval'
+            isCovered: false,
+            text: 'Position single face inside the center oval'
           });
         }
       } else {
         autoCapturedRef.current = false;
-        setFaceStatus({ valid: false, count: 0, isMismatch: false, text: 'Align face inside the center oval' });
+        scanProgressRef.current = 0;
+        setScanProgress(0);
+        setFaceStatus({ valid: false, count: 0, isMismatch: false, isCovered: false, text: 'Align face inside the center oval' });
       }
     }, 75);
 
@@ -450,22 +506,52 @@ export default function FaceScanModalCapture({
                     className="absolute inset-0 w-full h-full pointer-events-none transform -scale-x-100"
                   />
 
-                  {/* Face Target Oval (Green Box for Verified, Red Box for Mismatch / Multiple) */}
-                  <div className={`absolute w-[165px] h-[210px] rounded-[50%] pointer-events-none transition-all duration-300 ${
-                    faceStatus.valid
-                      ? 'border-4 border-emerald-400 shadow-[0_0_25px_rgba(52,211,153,0.5)] scale-102'
-                      : (faceStatus.count > 1 || faceStatus.isMismatch)
-                      ? 'border-4 border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.5)]'
-                      : 'border-2 border-dashed border-slate-400/80'
-                  }`} />
+                  {/* Face Target Oval with SVG Biometric Scanning Ring (0% -> 100%) */}
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                    <div className="relative w-[175px] h-[220px] flex items-center justify-center">
+                      <svg className="absolute inset-0 w-full h-full transform -rotate-90 pointer-events-none">
+                        <ellipse
+                          cx="87.5"
+                          cy="110"
+                          rx="80"
+                          ry="102"
+                          fill="none"
+                          stroke={
+                            faceStatus.isMismatch || faceStatus.isCovered || faceStatus.count > 1
+                              ? '#ef4444'
+                              : scanProgress > 0
+                              ? '#10b981'
+                              : '#94a3b8'
+                          }
+                          strokeWidth={scanProgress > 0 ? "5" : "2"}
+                          strokeDasharray={
+                            faceStatus.isMismatch || faceStatus.isCovered || faceStatus.count > 1
+                              ? "none"
+                              : scanProgress > 0
+                              ? "572"
+                              : "6 6"
+                          }
+                          strokeDashoffset={
+                            scanProgress > 0 ? 572 - (572 * scanProgress) / 100 : 0
+                          }
+                          style={{ transition: 'stroke-dashoffset 75ms linear, stroke 0.2s ease' }}
+                        />
+                      </svg>
+
+                      {/* Full Glow Effect on 100% Verified */}
+                      {scanProgress >= 100 && !faceStatus.isMismatch && !faceStatus.isCovered && (
+                        <div className="absolute inset-0 rounded-[50%] border-4 border-emerald-400 shadow-[0_0_35px_rgba(52,211,153,0.8)] animate-pulse" />
+                      )}
+                    </div>
+                  </div>
 
                   {/* Status Tag */}
                   <div className="absolute top-3 left-3 z-10">
-                    {faceStatus.valid ? (
+                    {scanProgress >= 100 ? (
                       <span className="flex items-center gap-1 bg-emerald-950/90 border border-emerald-500 text-emerald-300 px-2.5 py-1 rounded-full text-[11px] font-semibold">
                         <CheckCircle2 size={12} /> {faceStatus.text}
                       </span>
-                    ) : (faceStatus.count > 1 || faceStatus.isMismatch) ? (
+                    ) : (faceStatus.count > 1 || faceStatus.isMismatch || faceStatus.isCovered) ? (
                       <span className="flex items-center gap-1 bg-red-950/90 border border-red-500 text-red-300 px-2.5 py-1 rounded-full text-[11px] font-semibold">
                         <AlertCircle className="text-red-400" size={12} /> {faceStatus.text}
                       </span>
@@ -482,40 +568,43 @@ export default function FaceScanModalCapture({
             {/* Modal Bottom Action */}
             {autoCapture ? (
               <div className={`mt-4 w-full py-3 px-4 rounded-xl flex items-center justify-center gap-2 font-semibold text-sm transition ${
-                faceStatus.valid
+                scanProgress >= 100
                   ? 'bg-emerald-600 text-white shadow-lg animate-pulse'
-                  : faceStatus.isMismatch
+                  : (faceStatus.isMismatch || faceStatus.isCovered)
                   ? 'bg-red-950 border border-red-700 text-red-300'
                   : 'bg-slate-800 text-slate-400 border border-slate-700'
               }`}>
-                {faceStatus.valid && <RefreshCw className="animate-spin text-white" size={16} />}
-                {faceStatus.isMismatch && <AlertCircle className="text-red-400" size={16} />}
+                {scanProgress > 0 && scanProgress < 100 && <RefreshCw className="animate-spin text-emerald-400" size={16} />}
+                {scanProgress >= 100 && <CheckCircle2 className="text-white" size={16} />}
+                {(faceStatus.isMismatch || faceStatus.isCovered) && <AlertCircle className="text-red-400" size={16} />}
                 <span>
-                  {faceStatus.valid 
-                    ? `✓ ${currentUserName} Verified — Punching Automatically...` 
-                    : faceStatus.isMismatch 
-                    ? 'Face mismatch! Only the registered employee can punch.' 
+                  {scanProgress >= 100 
+                    ? (mode === 'register' ? '✓ Biometrics Verified (100%) — Capturing Photo...' : `✓ Face Verified — Auto Punching...`) 
+                    : (faceStatus.isMismatch || faceStatus.isCovered)
+                    ? faceStatus.text
                     : faceStatus.count > 1 
                     ? 'Multiple faces found - 1 face only' 
-                    : 'Hold still... Auto-punching when aligned'}
+                    : scanProgress > 0 
+                    ? `🔍 Scanning biometrics... ${scanProgress}%` 
+                    : 'Position single face inside center oval'}
                 </span>
               </div>
             ) : (
               <button
                 type="button"
                 onClick={handleCapture}
-                disabled={!faceStatus.valid || faceStatus.isMismatch}
+                disabled={scanProgress < 100 || faceStatus.isMismatch || faceStatus.isCovered}
                 className={`mt-4 w-full py-3 px-4 rounded-xl flex items-center justify-center gap-2 font-semibold text-sm transition ${
-                  faceStatus.valid
+                  scanProgress >= 100
                     ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg cursor-pointer active:scale-95'
                     : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
                 }`}
               >
                 <Camera size={16} />
-                {faceStatus.valid 
+                {scanProgress >= 100 
                   ? 'Capture & Confirm' 
-                  : faceStatus.isMismatch 
-                  ? 'Face mismatch! Only the registered employee can punch.' 
+                  : (faceStatus.isMismatch || faceStatus.isCovered)
+                  ? faceStatus.text 
                   : faceStatus.count > 1 
                   ? 'Multiple faces found - 1 face only' 
                   : 'Align face inside center oval'}
