@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     MarkAttendanceView, EmployeeRegisterView, AttendanceHistoryView, 
     GeofenceConfigView, EmployeeLoginView, VerifyFaceView, UpdateProfileView,
-    SubmitLeaveRequestView, MyLeaveRequestsView, LeaveActionView
+    SubmitLeaveRequestView, MyLeaveRequestsView, LeaveActionView, RegisteredDescriptorsView
 )
 from .payroll_sync import MonthlySummaryView, SyncToPayslipProView
 
@@ -11,6 +11,7 @@ urlpatterns = [
     path('register/', EmployeeRegisterView.as_view(), name='employee-register'),
     path('login/', EmployeeLoginView.as_view(), name='employee-login'),
     path('verify-face/', VerifyFaceView.as_view(), name='verify-face'),
+    path('registered-descriptors/', RegisteredDescriptorsView.as_view(), name='registered-descriptors'),
     path('update-profile/', UpdateProfileView.as_view(), name='update-profile'),
     path('mark-attendance/', MarkAttendanceView.as_view(), name='mark-attendance'),
     path('history/', AttendanceHistoryView.as_view(), name='attendance-history'),

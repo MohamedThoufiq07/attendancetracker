@@ -41,6 +41,20 @@ class VerifyFaceView(APIView):
         except Exception as e:
             return Response({"valid": False, "error": "Unable to analyze photo. Please upload a clear front-facing portrait photo."}, status=status.HTTP_400_BAD_REQUEST)
 
+class RegisteredDescriptorsView(APIView):
+    def get(self, request):
+        employees = Employee.objects.filter(is_active=True).exclude(face_encoding__isnull=True)
+        data = []
+        for emp in employees:
+            desc = get_valid_employee_descriptor(emp)
+            if desc and len(desc) == 128:
+                data.append({
+                    "emp_id": emp.emp_id,
+                    "full_name": emp.full_name,
+                    "descriptor": desc
+                })
+        return Response(data, status=status.HTTP_200_OK)
+
 class GeofenceConfigView(APIView):
     def get(self, request):
         return Response({

@@ -13,7 +13,9 @@ export default function FaceScanModalCapture({
   autoCapture = false,
   isDarkMode = false,
   currentUserDescriptor = null,
-  currentUserName = "Employee"
+  currentUserName = "Employee",
+  allRegisteredDescriptors = [],
+  mode = "punch"
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -114,14 +116,14 @@ export default function FaceScanModalCapture({
         if (api.detectSingleFace) {
           detection = await api.detectSingleFace(
             video,
-            new api.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 })
+            new api.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.2 })
           ).withFaceLandmarks(true).withFaceDescriptor();
         }
 
         if (!detection && api.detectAllFaces) {
           const raw = await api.detectAllFaces(
             video,
-            new api.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 })
+            new api.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.2 })
           ).withFaceLandmarks(true).withFaceDescriptors();
           if (raw && raw.length > 0) detection = raw[0];
         }
@@ -179,12 +181,12 @@ export default function FaceScanModalCapture({
       let detections = [];
       let singleFaceDetection = null;
 
-      // 1. Try detectSingleFace with landmarks and descriptor if faceRecognitionNet is loaded
+      // 1. Try detectSingleFace with fast 224 input size
       if (api && api.detectSingleFace && api.nets?.faceRecognitionNet?.isLoaded) {
         try {
           singleFaceDetection = await api.detectSingleFace(
             video,
-            new api.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 })
+            new api.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.2 })
           ).withFaceLandmarks(true).withFaceDescriptor();
 
           if (singleFaceDetection) {
@@ -193,12 +195,12 @@ export default function FaceScanModalCapture({
         } catch (e) {}
       }
 
-      // 2. Fallback to detectAllFaces if detectSingleFace didn't return
+      // 2. Fallback to detectAllFaces
       if (detections.length === 0 && api && api.detectAllFaces) {
         try {
           const rawDetections = await api.detectAllFaces(
             video,
-            new api.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 })
+            new api.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.2 })
           );
           detections = api.resizeResults ? api.resizeResults(rawDetections, displaySize) : rawDetections;
         } catch (e) {}
@@ -231,14 +233,35 @@ export default function FaceScanModalCapture({
 
         const deltaX = Math.abs(faceCenterX - viewCenterX);
         const deltaY = Math.abs(faceCenterY - viewCenterY);
-        const isCentered = deltaX <= 90 && deltaY <= 90;
+        const isCentered = deltaX <= 110 && deltaY <= 110;
 
-        // Perform strict 1:1 Euclidean Distance Verification against currentUserDescriptor
-        let isFaceMatched = true;
         let liveDescriptor = det.descriptor ? Array.from(det.descriptor) : null;
+        let isFaceMatched = true;
+        let isDuplicateFace = false;
+        let duplicateEmpId = null;
         let calculatedDistance = null;
 
-        if (liveDescriptor && currentUserDescriptor && Array.isArray(currentUserDescriptor) && currentUserDescriptor.length === 128) {
+        // REAL-TIME DUPLICATE FACE CHECK FOR REGISTRATION
+        if (mode === 'register' && liveDescriptor && allRegisteredDescriptors && allRegisteredDescriptors.length > 0) {
+          const liveFloatArray = new Float32Array(liveDescriptor);
+          for (const emp of allRegisteredDescriptors) {
+            if (emp.descriptor && Array.isArray(emp.descriptor) && emp.descriptor.length === 128) {
+              const targetArr = new Float32Array(emp.descriptor);
+              const d = api.euclideanDistance 
+                ? api.euclideanDistance(liveFloatArray, targetArr) 
+                : Math.sqrt(liveDescriptor.reduce((sum, val, idx) => sum + Math.pow(val - emp.descriptor[idx], 2), 0));
+
+              if (d < 0.52) {
+                isDuplicateFace = true;
+                duplicateEmpId = emp.emp_id;
+                break;
+              }
+            }
+          }
+        }
+
+        // REAL-TIME 1:1 FACE VERIFICATION FOR ATTENDANCE PUNCH
+        if (mode === 'punch' && liveDescriptor && currentUserDescriptor && Array.isArray(currentUserDescriptor) && currentUserDescriptor.length === 128) {
           const targetDescriptor = new Float32Array(currentUserDescriptor);
           const liveFloatArray = new Float32Array(liveDescriptor);
           
@@ -248,15 +271,20 @@ export default function FaceScanModalCapture({
             calculatedDistance = Math.sqrt(liveDescriptor.reduce((sum, val, idx) => sum + Math.pow(val - currentUserDescriptor[idx], 2), 0));
           }
 
-          console.log("Matching distance:", calculatedDistance);
-
-          // Use 0.55 threshold for real-world webcam conditions (Lighting/Angle tolerant)
           if (calculatedDistance > 0.55) {
             isFaceMatched = false;
           }
         }
 
-        if (!isFaceMatched) {
+        if (isDuplicateFace) {
+          autoCapturedRef.current = false;
+          setFaceStatus({
+            valid: false,
+            count: 1,
+            isMismatch: true,
+            text: `Face already registered under employee ID: ${duplicateEmpId}`
+          });
+        } else if (!isFaceMatched) {
           autoCapturedRef.current = false;
           setFaceStatus({
             valid: false,
@@ -267,8 +295,8 @@ export default function FaceScanModalCapture({
         } else if (isCentered) {
           const matchPercent = calculatedDistance !== null ? Math.round((1 - calculatedDistance) * 100) : 100;
           const statusText = autoCapture 
-            ? `✓ Face Verified (${matchPercent}% match) — Auto Punching...` 
-            : `✓ Face Verified (${matchPercent}% match)`;
+            ? (mode === 'register' ? '✓ Face Aligned — Auto Capturing Photo...' : `✓ Face Verified (${matchPercent}% match) — Auto Punching...`)
+            : (mode === 'register' ? '✓ Face Aligned & Verified' : `✓ Face Verified (${matchPercent}% match)`);
 
           setFaceStatus({
             valid: true,
@@ -280,7 +308,7 @@ export default function FaceScanModalCapture({
             autoCapturedRef.current = true;
             setTimeout(() => {
               if (handleCaptureRef.current) handleCaptureRef.current();
-            }, 250);
+            }, 100);
           }
         } else {
           autoCapturedRef.current = false;
@@ -295,7 +323,7 @@ export default function FaceScanModalCapture({
         autoCapturedRef.current = false;
         setFaceStatus({ valid: false, count: 0, isMismatch: false, text: 'Align face inside the center oval' });
       }
-    }, 120);
+    }, 75);
 
     return () => clearInterval(interval);
   };

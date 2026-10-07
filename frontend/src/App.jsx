@@ -341,8 +341,21 @@ export default function AttendanceCheckIn() {
   const [regPhoto, setRegPhoto] = useState(null);
   const [regPhotoPreview, setRegPhotoPreview] = useState(null);
   const [regPhotoDescriptor, setRegPhotoDescriptor] = useState(null);
+  const [allRegisteredDescriptors, setAllRegisteredDescriptors] = useState([]);
   const [faceValidating, setFaceValidating] = useState(false);
   const [faceValidError, setFaceValidError] = useState(null);
+
+  const fetchRegisteredDescriptors = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/attendance/registered-descriptors/`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data)) {
+        setAllRegisteredDescriptors(data);
+      }
+    } catch (err) {
+      console.warn("Error fetching registered descriptors:", err);
+    }
+  };
 
   // History & Monthly Payroll state
   const [historyList, setHistoryList] = useState([]);
@@ -1157,6 +1170,7 @@ export default function AttendanceCheckIn() {
   };
 
   useEffect(() => {
+    fetchRegisteredDescriptors();
     if ((activeTab === 'leave' || activeTab === 'status') && currentUser) {
       fetchMyLeaves();
     } else if (activeTab === 'history' && currentUser) {
@@ -1995,34 +2009,43 @@ export default function AttendanceCheckIn() {
 
 
               {/* FACE PHOTO CAPTURE SECTION - CENTERED MODAL CAPTURE */}
-              <FaceScanModalCapture isDarkMode={isDarkMode} onFaceCaptured={(blobOrDataUrl, descriptorArray) => {
-                if (descriptorArray && Array.isArray(descriptorArray) && descriptorArray.length === 128) {
-                  setRegPhotoDescriptor(descriptorArray);
-                }
-                if (typeof blobOrDataUrl === 'string' && blobOrDataUrl.startsWith('data:')) {
-                  setRegPhotoPreview(blobOrDataUrl);
-                  try {
-                    const parts = blobOrDataUrl.split(';base64,');
-                    const contentType = parts[0].split(':')[1];
-                    const raw = window.atob(parts[1]);
-                    const uInt8Array = new Uint8Array(raw.length);
-                    for (let i = 0; i < raw.length; ++i) {
-                      uInt8Array[i] = raw.charCodeAt(i);
-                    }
-                    const blob = new Blob([uInt8Array], { type: contentType });
-                    setRegPhoto(blob);
-                  } catch (e) {
-                    setRegPhoto(new Blob(["dummy"], { type: 'image/jpeg' }));
+              <FaceScanModalCapture 
+                title="Biometric Face Scanner"
+                description="Align face inside center oval for automatic photo capture."
+                buttonText="Capture Profile Photo"
+                autoCapture={true}
+                mode="register"
+                isDarkMode={isDarkMode} 
+                allRegisteredDescriptors={allRegisteredDescriptors}
+                onFaceCaptured={(blobOrDataUrl, descriptorArray) => {
+                  if (descriptorArray && Array.isArray(descriptorArray) && descriptorArray.length === 128) {
+                    setRegPhotoDescriptor(descriptorArray);
                   }
-                } else {
-                  setRegPhoto(blobOrDataUrl);
-                  if (blobOrDataUrl instanceof Blob) {
-                    setRegPhotoPreview(URL.createObjectURL(blobOrDataUrl));
-                  } else {
+                  if (typeof blobOrDataUrl === 'string' && blobOrDataUrl.startsWith('data:')) {
                     setRegPhotoPreview(blobOrDataUrl);
+                    try {
+                      const parts = blobOrDataUrl.split(';base64,');
+                      const contentType = parts[0].split(':')[1];
+                      const raw = window.atob(parts[1]);
+                      const uInt8Array = new Uint8Array(raw.length);
+                      for (let i = 0; i < raw.length; ++i) {
+                        uInt8Array[i] = raw.charCodeAt(i);
+                      }
+                      const blob = new Blob([uInt8Array], { type: contentType });
+                      setRegPhoto(blob);
+                    } catch (e) {
+                      setRegPhoto(new Blob(["dummy"], { type: 'image/jpeg' }));
+                    }
+                  } else {
+                    setRegPhoto(blobOrDataUrl);
+                    if (blobOrDataUrl instanceof Blob) {
+                      setRegPhotoPreview(URL.createObjectURL(blobOrDataUrl));
+                    } else {
+                      setRegPhotoPreview(blobOrDataUrl);
+                    }
                   }
-                }
-              }} />
+                }} 
+              />
 
               {faceValidating && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: '10px', backgroundColor: isDarkMode ? '#172554' : '#EFF6FF', border: `1px solid ${isDarkMode ? '#1e40af' : '#BFDBFE'}`, color: isDarkMode ? '#93c5fd' : '#1D4ED8', fontSize: '13px', fontWeight: '700' }}>
