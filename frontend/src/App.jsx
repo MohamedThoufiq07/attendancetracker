@@ -1551,33 +1551,41 @@ export default function AttendanceCheckIn() {
         </div>
       </header>
 
-      {/* TOP CLOCK BAR */}
-      <div style={{
-        width: '100%',
-        padding: '16px 32px 0 32px',
-        boxSizing: 'border-box',
-        display: 'flex',
-        justifyContent: 'flex-end',
-        alignItems: 'center'
-      }}>
+      {/* TOP CLOCK & DATE BAR (SHOW ONLY IN PUNCH ATTENDANCE TAB) */}
+      {activeTab === 'punch' && (
         <div style={{
+          width: '100%',
+          padding: '16px 32px 0 32px',
+          boxSizing: 'border-box',
           display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          padding: '8px 16px',
-          borderRadius: '20px',
-          backgroundColor: theme.cardBg,
-          border: `1px solid ${theme.border}`,
-          color: theme.textPrimary,
-          fontSize: '14px',
-          fontWeight: '700',
-          fontFamily: 'monospace',
-          boxShadow: isDarkMode ? 'none' : '0 2px 6px rgba(0,0,0,0.04)'
+          justifyContent: 'flex-end',
+          alignItems: 'center'
         }}>
-          <Clock style={{ width: '16px', height: '16px', color: isDarkMode ? '#818cf8' : '#4f46e5' }} />
-          {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            padding: '8px 16px',
+            borderRadius: '20px',
+            backgroundColor: theme.cardBg,
+            border: `1px solid ${theme.border}`,
+            color: theme.textPrimary,
+            fontSize: '13px',
+            fontWeight: '700',
+            boxShadow: isDarkMode ? 'none' : '0 2px 6px rgba(0,0,0,0.04)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Calendar style={{ width: '15px', height: '15px', color: isDarkMode ? '#818cf8' : '#4f46e5' }} />
+              <span>{`${currentTime.toLocaleDateString('en-US', { weekday: 'short' })}, ${String(currentTime.getDate()).padStart(2, '0')} ${currentTime.toLocaleDateString('en-US', { month: 'short' })} ${currentTime.getFullYear()}`}</span>
+            </div>
+            <span style={{ color: theme.border, fontWeight: '400' }}>|</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontFamily: 'monospace', fontSize: '14px' }}>
+              <Clock style={{ width: '15px', height: '15px', color: isDarkMode ? '#818cf8' : '#4f46e5' }} />
+              <span>{currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}</span>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* MAIN LAYOUT WRAPPER */}
       <div className="w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-6 box-border grid grid-cols-1 lg:grid-cols-12 gap-6">
