@@ -106,15 +106,6 @@ class EmployeeRegisterView(APIView):
         if phone_number and Employee.objects.filter(phone_number=phone_number).exists():
             return Response({"error": f"Phone number '{phone_number}' is already registered to another employee profile."}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            pil_image = Image.open(image_file).convert('RGB')
-            image_np = np.array(pil_image)
-            encoding = compute_face_encoding(image_np)
-        except ValueError as ve:
-            return Response({"error": str(ve)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response({"error": f"Failed to process face image: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
-
         # Extract face_descriptor if sent directly from frontend face-api
         incoming_descriptor = None
         face_descriptor_raw = request.data.get('face_descriptor')

@@ -340,6 +340,7 @@ export default function AttendanceCheckIn() {
 
   const [regPhoto, setRegPhoto] = useState(null);
   const [regPhotoPreview, setRegPhotoPreview] = useState(null);
+  const [regPhotoDescriptor, setRegPhotoDescriptor] = useState(null);
   const [faceValidating, setFaceValidating] = useState(false);
   const [faceValidError, setFaceValidError] = useState(null);
 
@@ -803,6 +804,10 @@ export default function AttendanceCheckIn() {
       if (regData.phone_number) formData.append('phone_number', regData.phone_number);
       formData.append('face_image', regPhoto, 'registered_face.jpg');
 
+      if (regPhotoDescriptor && Array.isArray(regPhotoDescriptor) && regPhotoDescriptor.length === 128) {
+        formData.append('face_descriptor', JSON.stringify(regPhotoDescriptor));
+      }
+
       const res = await fetch(`${API_BASE_URL}/api/attendance/register/`, {
         method: 'POST',
         body: formData
@@ -814,7 +819,7 @@ export default function AttendanceCheckIn() {
         emp_id: data.emp_id,
         name: data.full_name,
         email: data.email,
-        face_descriptor: data.face_descriptor,
+        face_descriptor: data.face_descriptor || regPhotoDescriptor,
         role: 'Employee'
       }, { access_token: data.access_token, refresh_token: data.refresh_token });
 
@@ -822,6 +827,7 @@ export default function AttendanceCheckIn() {
       setRegData({ full_name: '', email: '', password: '', confirm_password: '', designation: '', joining_date: '', phone_number: '' });
       setRegPhoto(null);
       setRegPhotoPreview(null);
+      setRegPhotoDescriptor(null);
       setActiveTab('punch');
 
       setNotificationModal({
@@ -1989,7 +1995,10 @@ export default function AttendanceCheckIn() {
 
 
               {/* FACE PHOTO CAPTURE SECTION - CENTERED MODAL CAPTURE */}
-              <FaceScanModalCapture isDarkMode={isDarkMode} onFaceCaptured={(blobOrDataUrl) => {
+              <FaceScanModalCapture isDarkMode={isDarkMode} onFaceCaptured={(blobOrDataUrl, descriptorArray) => {
+                if (descriptorArray && Array.isArray(descriptorArray) && descriptorArray.length === 128) {
+                  setRegPhotoDescriptor(descriptorArray);
+                }
                 if (typeof blobOrDataUrl === 'string' && blobOrDataUrl.startsWith('data:')) {
                   setRegPhotoPreview(blobOrDataUrl);
                   try {
