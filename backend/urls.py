@@ -1,5 +1,5 @@
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
 
@@ -11,6 +11,8 @@ urlpatterns = [
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/attendance/', include('attendance.urls')),
     path('attendance/', include('attendance.urls')),
+    re_path(r'^api/index\.py', include('attendance.urls')),
+    re_path(r'^backend/wsgi\.py', include('attendance.urls')),
     path('', include('attendance.urls')),
 
 ]
