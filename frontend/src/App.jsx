@@ -672,7 +672,7 @@ export default function AttendanceCheckIn() {
     }
   };
 
-  const handlePunchAttendance = async (capturedBlob) => {
+  const handlePunchAttendance = async (capturedBlob, liveDescriptor = null) => {
     setErrorBanner(null);
 
     if (!isWithinZone) {
@@ -704,6 +704,9 @@ export default function AttendanceCheckIn() {
       formData.append('longitude', userCoords.lng);
       if (photoBlob) {
         formData.append('face_image', photoBlob, 'punch_selfie.jpg');
+      }
+      if (liveDescriptor && Array.isArray(liveDescriptor) && liveDescriptor.length === 128) {
+        formData.append('face_descriptor', JSON.stringify(liveDescriptor));
       }
 
       const response = await fetch(`${API_BASE_URL}/api/attendance/mark-attendance/`, {
@@ -1801,7 +1804,7 @@ export default function AttendanceCheckIn() {
                   isDarkMode={isDarkMode}
                   currentUserDescriptor={currentUser?.face_descriptor || currentUser?.face_encoding}
                   currentUserName={currentUser?.name || currentUser?.full_name || 'Employee'}
-                  onFaceCaptured={(blob) => handlePunchAttendance(blob)} 
+                  onFaceCaptured={(blob, descriptorArray) => handlePunchAttendance(blob, descriptorArray)} 
                 />
               ) : (
                 <div style={{

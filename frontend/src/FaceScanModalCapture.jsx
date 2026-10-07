@@ -94,10 +94,29 @@ export default function FaceScanModalCapture({
 
   const [faceStatus, setFaceStatus] = useState({ valid: false, count: 0, isMismatch: false, text: 'Align face inside the center oval' });
 
-  const handleCapture = () => {
+  const handleCapture = async () => {
     if (!videoRef.current || faceStatus.isMismatch) return;
 
     const video = videoRef.current;
+    let descriptorArray = null;
+
+    const api = faceapi || window.faceapi;
+    if (api && api.detectSingleFace && api.nets?.faceRecognitionNet?.isLoaded) {
+      try {
+        const detection = await api.detectSingleFace(
+          video,
+          new api.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 })
+        ).withFaceLandmarks(true).withFaceDescriptor();
+
+        if (detection && detection.descriptor) {
+          // CRUCIAL: Must convert Float32Array to native array
+          descriptorArray = Array.from(detection.descriptor);
+        }
+      } catch (e) {
+        console.warn("Capture face descriptor extraction warning:", e);
+      }
+    }
+
     const offCanvas = document.createElement('canvas');
     offCanvas.width = video.videoWidth || 640;
     offCanvas.height = video.videoHeight || 480;
@@ -115,7 +134,7 @@ export default function FaceScanModalCapture({
       } else {
         setCapturedImage(null);
       }
-      if (onFaceCaptured) onFaceCaptured(blob || dataUrl);
+      if (onFaceCaptured) onFaceCaptured(blob || dataUrl, descriptorArray);
       stopCamera();
       setIsOpen(false);
     }, 'image/jpeg', 0.95);
@@ -202,13 +221,20 @@ export default function FaceScanModalCapture({
         let liveDescriptor = det.descriptor ? Array.from(det.descriptor) : null;
         let calculatedDistance = null;
 
-        if (liveDescriptor && currentUserDescriptor && Array.isArray(currentUserDescriptor) && currentUserDescriptor.length === liveDescriptor.length) {
+        if (liveDescriptor && currentUserDescriptor && Array.isArray(currentUserDescriptor) && currentUserDescriptor.length === 128) {
+          const targetDescriptor = new Float32Array(currentUserDescriptor);
+          const liveFloatArray = new Float32Array(liveDescriptor);
+          
           if (api && api.euclideanDistance) {
-            calculatedDistance = api.euclideanDistance(liveDescriptor, currentUserDescriptor);
+            calculatedDistance = api.euclideanDistance(liveFloatArray, targetDescriptor);
           } else {
             calculatedDistance = Math.sqrt(liveDescriptor.reduce((sum, val, idx) => sum + Math.pow(val - currentUserDescriptor[idx], 2), 0));
           }
-          if (calculatedDistance > 0.45) {
+
+          console.log("Matching distance:", calculatedDistance);
+
+          // Use 0.55 threshold for real-world webcam conditions (Lighting/Angle tolerant)
+          if (calculatedDistance > 0.55) {
             isFaceMatched = false;
           }
         }
@@ -222,11 +248,16 @@ export default function FaceScanModalCapture({
             text: 'Face mismatch! Only the registered employee can punch.'
           });
         } else if (isCentered) {
+          const matchPercent = calculatedDistance !== null ? Math.round((1 - calculatedDistance) * 100) : 100;
+          const statusText = autoCapture 
+            ? `✓ Face Verified (${matchPercent}% match) — Auto Punching...` 
+            : `✓ Face Verified (${matchPercent}% match)`;
+
           setFaceStatus({
             valid: true,
             count: 1,
             isMismatch: false,
-            text: autoCapture ? `✓ Face Verified: ${currentUserName}` : '✓ Single Face Aligned & Verified'
+            text: statusText
           });
           if (autoCapture && !autoCapturedRef.current) {
             autoCapturedRef.current = true;

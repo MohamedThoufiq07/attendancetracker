@@ -116,34 +116,43 @@ class EmployeeRegisterView(APIView):
             return Response({"error": f"Failed to process face image: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Extract face_descriptor if sent directly from frontend face-api
+        incoming_descriptor = None
         face_descriptor_raw = request.data.get('face_descriptor')
         if face_descriptor_raw:
             if isinstance(face_descriptor_raw, str):
                 import json
                 try:
                     parsed = json.loads(face_descriptor_raw)
-                    if isinstance(parsed, (list, tuple)) and len(parsed) > 0:
-                        encoding = parsed
+                    if isinstance(parsed, (list, tuple)) and len(parsed) == 128:
+                        incoming_descriptor = [float(x) for x in parsed]
                 except Exception:
                     pass
-            elif isinstance(face_descriptor_raw, (list, tuple)) and len(face_descriptor_raw) > 0:
-                encoding = list(face_descriptor_raw)
+            elif isinstance(face_descriptor_raw, (list, tuple)) and len(face_descriptor_raw) == 128:
+                incoming_descriptor = [float(x) for x in face_descriptor_raw]
 
-        # 1. DUPLICATE FACE CHECK ON REGISTRATION (distance < 0.45)
-        if encoding and len(encoding) > 0:
-            new_descriptor = np.array(encoding, dtype=np.float32)
+        if not incoming_descriptor and image_file:
+            try:
+                pil_image = Image.open(image_file).convert('RGB')
+                image_np = np.array(pil_image)
+                incoming_descriptor = compute_face_encoding(image_np)
+            except ValueError as ve:
+                return Response({"error": str(ve)}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                return Response({"error": f"Failed to process face image: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 1. DUPLICATE FACE CHECK ON REGISTRATION (dist < 0.52)
+        if incoming_descriptor and len(incoming_descriptor) == 128:
             existing_employees = Employee.objects.filter(is_active=True).exclude(emp_id__iexact=emp_id).exclude(face_encoding__isnull=True)
             for emp in existing_employees:
-                if not emp.face_encoding or len(emp.face_encoding) == 0:
+                if not emp.face_encoding or len(emp.face_encoding) != 128:
                     continue
-                stored_descriptor = np.array(emp.face_encoding, dtype=np.float32)
-                if len(new_descriptor) == len(stored_descriptor):
-                    distance = float(np.linalg.norm(new_descriptor - stored_descriptor))
-                    if distance < 0.45:
-                        return Response(
-                            {"error": f"This face is already registered under employee ID: {emp.emp_id}"},
-                            status=status.HTTP_400_BAD_REQUEST
-                        )
+                import math
+                dist = math.sqrt(sum((a - b) ** 2 for a, b in zip(incoming_descriptor, emp.face_encoding)))
+                if dist < 0.52:
+                    return Response(
+                        {"error": f"Face already registered under employee ID: {emp.emp_id}"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
         employee = Employee.objects.create(
             emp_id=emp_id,
@@ -152,7 +161,7 @@ class EmployeeRegisterView(APIView):
             designation=designation,
             joining_date=joining_date,
             phone_number=phone_number if phone_number else None,
-            face_encoding=encoding,
+            face_encoding=incoming_descriptor,
             profile_photo=image_file,
             is_active=True
         )
@@ -240,7 +249,7 @@ class MarkAttendanceView(APIView):
         if not employee:
             return Response({"error": f"Employee ID '{emp_id}' is not registered in the system yet. Please click 'Register' tab to create your employee profile first!"}, status=status.HTTP_404_NOT_FOUND)
 
-        # 4. Strict 1:1 Face Recognition Verification
+        # 4. Strict 1:1 Face Recognition Verification (dist <= 0.55)
         captured_encoding = None
         face_descriptor_raw = request.data.get('face_descriptor')
         if face_descriptor_raw:
@@ -248,12 +257,12 @@ class MarkAttendanceView(APIView):
                 import json
                 try:
                     parsed = json.loads(face_descriptor_raw)
-                    if isinstance(parsed, (list, tuple)) and len(parsed) > 0:
-                        captured_encoding = parsed
+                    if isinstance(parsed, (list, tuple)) and len(parsed) == 128:
+                        captured_encoding = [float(x) for x in parsed]
                 except Exception:
                     pass
-            elif isinstance(face_descriptor_raw, (list, tuple)) and len(face_descriptor_raw) > 0:
-                captured_encoding = list(face_descriptor_raw)
+            elif isinstance(face_descriptor_raw, (list, tuple)) and len(face_descriptor_raw) == 128:
+                captured_encoding = [float(x) for x in face_descriptor_raw]
 
         if not captured_encoding and image_file:
             try:
@@ -270,16 +279,14 @@ class MarkAttendanceView(APIView):
             employee.face_encoding = captured_encoding
             employee.save()
         else:
-            stored_descriptor = np.array(employee.face_encoding, dtype=np.float32)
-            new_descriptor = np.array(captured_encoding, dtype=np.float32)
-
             is_match = False
-            if len(stored_descriptor) == len(new_descriptor):
-                distance = float(np.linalg.norm(new_descriptor - stored_descriptor))
-                if distance <= 0.45:
+            if len(employee.face_encoding) == 128 and len(captured_encoding) == 128:
+                import math
+                distance = math.sqrt(sum((a - b) ** 2 for a, b in zip(captured_encoding, employee.face_encoding)))
+                if distance <= 0.55:
                     is_match = True
 
-            if not is_match and len(stored_descriptor) != len(new_descriptor):
+            if not is_match and len(employee.face_encoding) != len(captured_encoding):
                 is_match = compare_face_vectors(employee.face_encoding, captured_encoding)
 
             if not is_match:
