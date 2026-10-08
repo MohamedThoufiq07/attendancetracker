@@ -179,7 +179,7 @@ class EmployeeRegisterView(APIView):
                 dist = math.sqrt(sum((a - b) ** 2 for a, b in zip(incoming_descriptor, stored_desc)))
                 if dist < 0.52:
                     return Response(
-                        {"error": f"Face already registered under employee ID: {emp.emp_id}"},
+                        {"error": "This face is already registered in the system."},
                         status=status.HTTP_400_BAD_REQUEST
                     )
 

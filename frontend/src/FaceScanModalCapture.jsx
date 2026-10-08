@@ -98,7 +98,7 @@ export default function FaceScanModalCapture({
     };
   }, [isOpen]);
 
-  const [faceStatus, setFaceStatus] = useState({ valid: false, count: 0, isMismatch: false, isCovered: false, text: 'Align face inside the center oval' });
+  const [faceStatus, setFaceStatus] = useState({ valid: false, count: 0, isMismatch: false, isCovered: false, text: 'Align face inside the center circle' });
 
   const handleCapture = async () => {
     if (!videoRef.current || faceStatus.isMismatch || faceStatus.isCovered) return;
@@ -239,23 +239,29 @@ export default function FaceScanModalCapture({
 
         const deltaX = Math.abs(faceCenterX - viewCenterX);
         const deltaY = Math.abs(faceCenterY - viewCenterY);
-        const isCentered = deltaX <= 110 && deltaY <= 110;
+        const isCentered = deltaX <= 85 && deltaY <= 85;
 
-        // Check for face obstruction / mask / cloth covering lower face
+        // Check for face obstruction / mask / cloth covering lower face safely
         let isCoveredFace = false;
         if (det.landmarks && det.landmarks.positions && det.landmarks.positions.length >= 68) {
-          const mouth = det.landmarks.getMouth();
-          const nose = det.landmarks.getNose();
-          if (!mouth || !nose || mouth.length < 4 || nose.length < 3) {
+          const mouth = typeof det.landmarks.getMouth === 'function' ? det.landmarks.getMouth() : null;
+          if (!mouth || mouth.length < 6) {
             isCoveredFace = true;
           } else {
-            const noseTip = nose[3] || nose[nose.length - 1];
-            const mouthTop = mouth[0] || mouth[14];
-            const mouthBottom = mouth[3] || mouth[18];
-            const noseToMouth = Math.abs(mouthTop.y - noseTip.y);
-            const mouthHeight = Math.abs(mouthBottom.y - mouthTop.y);
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            mouth.forEach(pt => {
+              if (pt.x < minX) minX = pt.x;
+              if (pt.x > maxX) maxX = pt.x;
+              if (pt.y < minY) minY = pt.y;
+              if (pt.y > maxY) maxY = pt.y;
+            });
+            const mouthW = maxX - minX;
+            const mouthH = maxY - minY;
+            const faceW = box.width || 100;
+            const faceH = box.height || 100;
 
-            if (noseToMouth < 4 || mouthHeight < 4) {
+            // Only flag as covered if mouth landmarks are severely collapsed or missing
+            if (mouthW < faceW * 0.10 || mouthH < faceH * 0.015) {
               isCoveredFace = true;
             }
           }
@@ -264,7 +270,6 @@ export default function FaceScanModalCapture({
         let liveDescriptor = det.descriptor ? Array.from(det.descriptor) : null;
         let isFaceMatched = true;
         let isDuplicateFace = false;
-        let duplicateEmpId = null;
         let calculatedDistance = null;
 
         // REAL-TIME DUPLICATE FACE CHECK FOR REGISTRATION
@@ -279,7 +284,6 @@ export default function FaceScanModalCapture({
 
               if (d < 0.52) {
                 isDuplicateFace = true;
-                duplicateEmpId = emp.emp_id;
                 break;
               }
             }
@@ -322,7 +326,7 @@ export default function FaceScanModalCapture({
             count: 1,
             isMismatch: true,
             isCovered: false,
-            text: `Face already registered under employee ID: ${duplicateEmpId}`
+            text: 'This face is already registered in the system.'
           });
         } else if (!isFaceMatched) {
           autoCapturedRef.current = false;
@@ -337,7 +341,7 @@ export default function FaceScanModalCapture({
           });
         } else if (isCentered) {
           // Increment scan progress ring 0% -> 100% smoothly over ~0.6 sec
-          scanProgressRef.current = Math.min(100, scanProgressRef.current + 18);
+          scanProgressRef.current = Math.min(100, scanProgressRef.current + 20);
           setScanProgress(scanProgressRef.current);
 
           const matchPercent = calculatedDistance !== null ? Math.round((1 - calculatedDistance) * 100) : 100;
@@ -370,14 +374,14 @@ export default function FaceScanModalCapture({
             count: 1,
             isMismatch: false,
             isCovered: false,
-            text: 'Position single face inside the center oval'
+            text: 'Position face inside the center circle'
           });
         }
       } else {
         autoCapturedRef.current = false;
         scanProgressRef.current = 0;
         setScanProgress(0);
-        setFaceStatus({ valid: false, count: 0, isMismatch: false, isCovered: false, text: 'Align face inside the center oval' });
+        setFaceStatus({ valid: false, count: 0, isMismatch: false, isCovered: false, text: 'Align face inside the center circle' });
       }
     }, 75);
 
@@ -478,17 +482,17 @@ export default function FaceScanModalCapture({
               </button>
             </div>
 
-            {/* Camera Viewport */}
-            <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-black border border-slate-700 flex items-center justify-center">
+            {/* Camera Viewport with Round Mask */}
+            <div className="relative w-full aspect-square max-h-[340px] rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 flex items-center justify-center">
               {loading && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-300 gap-2 z-20 bg-slate-950/80">
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-300 gap-2 z-30 bg-slate-950">
                   <RefreshCw className="animate-spin text-indigo-400" size={28} />
                   <span className="text-xs">Accessing webcam & Face AI...</span>
                 </div>
               )}
 
               {errorMessage ? (
-                <div className="p-4 text-center text-red-400 text-xs z-20">
+                <div className="p-4 text-center text-red-400 text-xs z-30">
                   {errorMessage}
                 </div>
               ) : (
@@ -506,47 +510,54 @@ export default function FaceScanModalCapture({
                     className="absolute inset-0 w-full h-full pointer-events-none transform -scale-x-100"
                   />
 
-                  {/* Face Target Oval with SVG Biometric Scanning Ring (0% -> 100%) */}
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-                    <div className="relative w-[175px] h-[220px] flex items-center justify-center">
+                  {/* Pitch Black / Dark Mask Overlay outside the center circle (Only round shape camera visible) */}
+                  <div 
+                    className="absolute inset-0 pointer-events-none z-10"
+                    style={{
+                      background: 'radial-gradient(circle 105px at 50% 50%, transparent 104px, rgba(15, 23, 42, 0.96) 105px)'
+                    }}
+                  />
+
+                  {/* Perfect Circular Biometric Scanning Ring (0% -> 100%) */}
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+                    <div className="relative w-[210px] h-[210px] flex items-center justify-center">
                       <svg className="absolute inset-0 w-full h-full transform -rotate-90 pointer-events-none">
-                        <ellipse
-                          cx="87.5"
-                          cy="110"
-                          rx="80"
-                          ry="102"
+                        <circle
+                          cx="105"
+                          cy="105"
+                          r="100"
                           fill="none"
                           stroke={
                             faceStatus.isMismatch || faceStatus.isCovered || faceStatus.count > 1
                               ? '#ef4444'
                               : scanProgress > 0
                               ? '#10b981'
-                              : '#94a3b8'
+                              : '#64748b'
                           }
-                          strokeWidth={scanProgress > 0 ? "5" : "2"}
+                          strokeWidth={scanProgress > 0 ? "5" : "3"}
                           strokeDasharray={
                             faceStatus.isMismatch || faceStatus.isCovered || faceStatus.count > 1
                               ? "none"
                               : scanProgress > 0
-                              ? "572"
-                              : "6 6"
+                              ? "628"
+                              : "8 8"
                           }
                           strokeDashoffset={
-                            scanProgress > 0 ? 572 - (572 * scanProgress) / 100 : 0
+                            scanProgress > 0 ? 628 - (628 * scanProgress) / 100 : 0
                           }
-                          style={{ transition: 'stroke-dashoffset 75ms linear, stroke 0.2s ease' }}
+                          style={{ transition: 'stroke-dashoffset 60ms linear, stroke 0.2s ease' }}
                         />
                       </svg>
 
-                      {/* Full Glow Effect on 100% Verified */}
+                      {/* Glowing Green Halo on 100% Verification */}
                       {scanProgress >= 100 && !faceStatus.isMismatch && !faceStatus.isCovered && (
-                        <div className="absolute inset-0 rounded-[50%] border-4 border-emerald-400 shadow-[0_0_35px_rgba(52,211,153,0.8)] animate-pulse" />
+                        <div className="absolute inset-0 rounded-full border-4 border-emerald-400 shadow-[0_0_35px_rgba(16,185,129,0.85)] animate-pulse" />
                       )}
                     </div>
                   </div>
 
                   {/* Status Tag */}
-                  <div className="absolute top-3 left-3 z-10">
+                  <div className="absolute top-3 left-3 z-20">
                     {scanProgress >= 100 ? (
                       <span className="flex items-center gap-1 bg-emerald-950/90 border border-emerald-500 text-emerald-300 px-2.5 py-1 rounded-full text-[11px] font-semibold">
                         <CheckCircle2 size={12} /> {faceStatus.text}
@@ -586,7 +597,7 @@ export default function FaceScanModalCapture({
                     ? 'Multiple faces found - 1 face only' 
                     : scanProgress > 0 
                     ? `🔍 Scanning biometrics... ${scanProgress}%` 
-                    : 'Position single face inside center oval'}
+                    : 'Position face inside center circle'}
                 </span>
               </div>
             ) : (
@@ -607,7 +618,7 @@ export default function FaceScanModalCapture({
                   ? faceStatus.text 
                   : faceStatus.count > 1 
                   ? 'Multiple faces found - 1 face only' 
-                  : 'Align face inside center oval'}
+                  : 'Align face inside center circle'}
               </button>
             )}
           </div>
