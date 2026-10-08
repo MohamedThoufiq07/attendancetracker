@@ -350,8 +350,8 @@ export default function FaceScanModalCapture({
               calculatedDistance = Math.sqrt(liveDescriptor.reduce((sum, val, idx) => sum + Math.pow(val - parsedUserDescriptor[idx], 2), 0));
             }
 
-            // Strict Euclidean distance threshold for 128D face recognition (<= 0.58 is match)
-            if (calculatedDistance > 0.58) {
+            // Strict Euclidean distance threshold for 128D face recognition (<= 0.48 is match)
+            if (calculatedDistance > 0.48) {
               isFaceMatched = false;
             } else {
               isFaceMatched = true;
@@ -441,38 +441,27 @@ export default function FaceScanModalCapture({
             text: '⚠️ Face Mismatch! (Not Matched)'
           });
         } else if (mode === 'register') {
-          // THREE INDIVIDUAL SCANS (Step 1: Straight, Step 2: Turn Left, Step 3: Turn Right)
-          // Each step fills from 0% to 100% over 3 seconds (2.5% per 75ms tick)
-          const currentStage = regStageRef.current;
+          // SINGLE SCAN (Straight head looking forward inside circle)
+          if (isStraightHead && isCentered) {
+            scanProgressRef.current = Math.min(100, scanProgressRef.current + 2.5);
+            const p = Math.floor(scanProgressRef.current);
+            setScanProgress(p);
 
-          if (currentStage === 1) {
-            // STEP 1: STRAIGHT HEAD (0% -> 100%)
-            if (isStraightHead && isCentered) {
-              scanProgressRef.current = Math.min(100, scanProgressRef.current + 2.5);
-              const p = Math.floor(scanProgressRef.current);
-              setScanProgress(p);
+            if (p >= 100) {
+              setScanProgress(100);
+              setFaceStatus({
+                valid: true,
+                count: 1,
+                isMismatch: false,
+                isCovered: false,
+                text: '✓ Face Biometric Scan Complete (100%) — Registering...'
+              });
 
-              if (p >= 100) {
-                // Step 1 Complete! Advance to Step 2
-                regStageRef.current = 2;
-                setRegStep(2);
-                scanProgressRef.current = 0;
-                setScanProgress(0);
-                setFaceStatus({
-                  valid: false,
-                  count: 1,
-                  isMismatch: false,
-                  isCovered: false,
-                  text: '✓ Step 1 Complete! Now turn head slightly LEFT ⬅️'
-                });
-              } else {
-                setFaceStatus({
-                  valid: false,
-                  count: 1,
-                  isMismatch: false,
-                  isCovered: false,
-                  text: `1️⃣ Step 1/3: Hold head STRAIGHT looking forward... ${p}%`
-                });
+              if (autoCapture && !autoCapturedRef.current) {
+                autoCapturedRef.current = true;
+                setTimeout(() => {
+                  if (handleCaptureRef.current) handleCaptureRef.current();
+                }, 120);
               }
             } else {
               setFaceStatus({
@@ -480,87 +469,27 @@ export default function FaceScanModalCapture({
                 count: 1,
                 isMismatch: false,
                 isCovered: false,
-                text: '1️⃣ Step 1/3: Hold head STRAIGHT looking forward'
+                text: `🔍 Scanning face biometrics... ${p}%`
               });
             }
-          } else if (currentStage === 2) {
-            // STEP 2: TURN LEFT (0% -> 100%)
-            if (isTurnedHead && isCentered) {
-              scanProgressRef.current = Math.min(100, scanProgressRef.current + 2.5);
-              const p = Math.floor(scanProgressRef.current);
-              setScanProgress(p);
-
-              if (p >= 100) {
-                // Step 2 Complete! Advance to Step 3
-                regStageRef.current = 3;
-                setRegStep(3);
-                scanProgressRef.current = 0;
-                setScanProgress(0);
-                setFaceStatus({
-                  valid: false,
-                  count: 1,
-                  isMismatch: false,
-                  isCovered: false,
-                  text: '✓ Step 2 Complete! Now turn head slightly RIGHT ➡️'
-                });
-              } else {
-                setFaceStatus({
-                  valid: false,
-                  count: 1,
-                  isMismatch: false,
-                  isCovered: false,
-                  text: `2️⃣ Step 2/3: Turn head slightly LEFT ⬅️ ... ${p}%`
-                });
-              }
-            } else {
+          } else {
+            // PAUSE SCAN on movement or deviation (Keep current progress, do not reset)
+            const currentP = Math.floor(scanProgressRef.current);
+            if (currentP > 0) {
               setFaceStatus({
                 valid: false,
                 count: 1,
                 isMismatch: false,
                 isCovered: false,
-                text: '2️⃣ Step 2/3: Turn head slightly LEFT ⬅️'
+                text: `⏸️ Scan Paused (${currentP}%): Align head straight inside circle`
               });
-            }
-          } else if (currentStage === 3) {
-            // STEP 3: TURN RIGHT (0% -> 100%)
-            if (isTurnedHead && isCentered) {
-              scanProgressRef.current = Math.min(100, scanProgressRef.current + 2.5);
-              const p = Math.floor(scanProgressRef.current);
-              setScanProgress(p);
-
-              if (p >= 100) {
-                // Step 3 Complete! All 3 angles captured!
-                setScanProgress(100);
-                setFaceStatus({
-                  valid: true,
-                  count: 1,
-                  isMismatch: false,
-                  isCovered: false,
-                  text: '✓ All 3 Face Angles Captured (100%) — Registering Biometrics...'
-                });
-
-                if (autoCapture && !autoCapturedRef.current) {
-                  autoCapturedRef.current = true;
-                  setTimeout(() => {
-                    if (handleCaptureRef.current) handleCaptureRef.current();
-                  }, 120);
-                }
-              } else {
-                setFaceStatus({
-                  valid: false,
-                  count: 1,
-                  isMismatch: false,
-                  isCovered: false,
-                  text: `3️⃣ Step 3/3: Turn head slightly RIGHT ➡️ ... ${p}%`
-                });
-              }
             } else {
               setFaceStatus({
                 valid: false,
                 count: 1,
                 isMismatch: false,
                 isCovered: false,
-                text: '3️⃣ Step 3/3: Turn head slightly RIGHT ➡️'
+                text: 'Align head straight inside the circle to start scan'
               });
             }
           }
@@ -784,34 +713,10 @@ export default function FaceScanModalCapture({
                     </div>
                   </div>
 
-                  {/* Step Pills for Registration Mode */}
+                  {/* Single Registration Scan Badge */}
                   {mode === 'register' && (
-                    <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 bg-slate-900/90 border border-slate-700/80 p-1.5 rounded-full shadow-lg">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-all ${
-                        regStep === 1 
-                          ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-400' 
-                          : regStep > 1 
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-700' 
-                          : 'bg-slate-800 text-slate-500'
-                      }`}>
-                        {regStep > 1 ? '✓ 1. Straight' : '1. Straight'}
-                      </span>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-all ${
-                        regStep === 2 
-                          ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-400' 
-                          : regStep > 2 
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-700' 
-                          : 'bg-slate-800 text-slate-500'
-                      }`}>
-                        {regStep > 2 ? '✓ 2. Left ⬅️' : '2. Left ⬅️'}
-                      </span>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-all ${
-                        regStep === 3 
-                          ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-400' 
-                          : 'bg-slate-800 text-slate-500'
-                      }`}>
-                        3. Right ➡️
-                      </span>
+                    <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 bg-slate-900/90 border border-slate-700/80 px-3 py-1 rounded-full shadow-lg text-[11px] font-bold text-indigo-300">
+                      <span>👤 Straight Face Alignment Scan</span>
                     </div>
                   )}
 

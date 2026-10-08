@@ -327,11 +327,11 @@ class MarkAttendanceView(APIView):
         if len(stored_desc) == 128 and len(captured_encoding) == 128:
             import math
             distance = math.sqrt(sum((a - b) ** 2 for a, b in zip(captured_encoding, stored_desc)))
-            if distance <= 0.58:
+            if distance <= 0.48:
                 is_match = True
 
         if not is_match:
-            is_match = compare_face_vectors(stored_desc, captured_encoding, tolerance=0.58)
+            is_match = compare_face_vectors(stored_desc, captured_encoding, tolerance=0.48)
 
         if not is_match:
             return Response(
@@ -347,6 +347,8 @@ class MarkAttendanceView(APIView):
 
         # 6. Record or Update DB
         attendance = Attendance.objects.filter(employee=employee, date=today).first()
+        is_early_checkout = request.data.get('is_early_checkout') in ['true', True, '1', 1] or request.data.get('permission') in ['true', True]
+        checkout_start_time = time(17, 30, 0)
 
         if attendance:
             # User already checked in today!
@@ -355,18 +357,19 @@ class MarkAttendanceView(APIView):
                     "error": f"You have already completed both Check-In ({attendance.check_in.strftime('%I:%M %p')}) and Check-Out ({attendance.check_out.strftime('%I:%M %p')}) for today!"
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Check-Out is ONLY permitted after 5:30 PM (17:30)
-            checkout_start_time = time(17, 30, 0)
-            if current_time < checkout_start_time:
+            # Check-Out permission check before 5:30 PM (17:30)
+            if current_time < checkout_start_time and not is_early_checkout:
                 return Response({
-                    "error": f"Attendance Check-In already recorded for today at {attendance.check_in.strftime('%I:%M %p')}. Check-Out punch will only be available after 5:30 PM."
+                    "error": f"Attendance Check-In already recorded for today at {attendance.check_in.strftime('%I:%M %p')}. Regular Check-Out punch is available after 5:30 PM. To check out early now, please click 'Early Check-Out (With Permission)'."
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Record Check-Out after 5:30 PM
+            # Record Check-Out
             attendance.check_out = current_time
             attendance.save()
+
+            msg_title = "Early Punch-Out (With Permission)" if current_time < checkout_start_time else "Punch-Out"
             return Response({
-                "message": f"Punch-Out recorded successfully for {employee.full_name}",
+                "message": f"{msg_title} recorded successfully for {employee.full_name}",
                 "employee_name": employee.full_name,
                 "emp_id": employee.emp_id,
                 "type": "PUNCH_OUT",

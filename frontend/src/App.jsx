@@ -686,7 +686,7 @@ export default function AttendanceCheckIn() {
     }
   };
 
-  const handlePunchAttendance = async (capturedBlob, liveDescriptor = null) => {
+  const handlePunchAttendance = async (capturedBlob, liveDescriptor = null, isEarlyCheckout = false) => {
     if (!isWithinZone) {
       const distStr = distanceMeters ? (distanceMeters > 1000 ? `${(distanceMeters/1000).toFixed(1)} km` : `${Math.round(distanceMeters)} meters`) : '';
       setNotificationModal({
@@ -716,6 +716,9 @@ export default function AttendanceCheckIn() {
       formData.append('emp_id', currentUser.emp_id);
       formData.append('latitude', userCoords.lat);
       formData.append('longitude', userCoords.lng);
+      if (isEarlyCheckout) {
+        formData.append('is_early_checkout', 'true');
+      }
       if (photoBlob) {
         formData.append('face_image', photoBlob, 'punch_selfie.jpg');
       }
@@ -728,7 +731,15 @@ export default function AttendanceCheckIn() {
         body: formData,
       });
 
-      const resData = await response.json();
+      let resData = {};
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        resData = await response.json();
+      } else {
+        const rawText = await response.text();
+        throw new Error(response.ok ? 'Server returned invalid response.' : `Server Error (${response.status}): ${rawText.substring(0, 120)}`);
+      }
+
       if (!response.ok) {
         throw new Error(resData.error || 'Attendance punch failed');
       }
@@ -1824,26 +1835,49 @@ export default function AttendanceCheckIn() {
 
 
 
-              {/* PUNCH ATTENDANCE TRIGGER BUTTON */}
+              {/* PUNCH ATTENDANCE TRIGGER BUTTONS */}
               {isWithinZone ? (
-                <FaceScanModalCapture 
-                  title="Biometric Punch Verification"
-                  description={hasCheckedIn ? "Hold face steady in green oval for automatic check-out." : "Hold face steady in green oval for automatic check-in."}
-                  buttonText={hasCheckedIn ? "Check Out" : "Check In"}
-                  resetOnCapture={true}
-                  autoCapture={true}
-                  isDarkMode={isDarkMode}
-                  currentUserDescriptor={
-                    currentUser?.face_descriptor || 
-                    currentUser?.face_encoding || 
-                    allRegisteredDescriptors.find(e => 
-                      (currentUser?.emp_id && String(e.emp_id).toLowerCase() === String(currentUser.emp_id).toLowerCase()) ||
-                      (currentUser?.email && String(e.email).toLowerCase() === String(currentUser.email).toLowerCase())
-                    )?.descriptor
-                  }
-                  currentUserName={currentUser?.name || currentUser?.full_name || 'Employee'}
-                  onFaceCaptured={(blob, descriptorArray) => handlePunchAttendance(blob, descriptorArray)} 
-                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
+                  <FaceScanModalCapture 
+                    title="Biometric Punch Verification"
+                    description={hasCheckedIn ? "Hold face steady in green oval for automatic check-out." : "Hold face steady in green oval for automatic check-in."}
+                    buttonText={hasCheckedIn ? "Check Out (Regular After 5:30 PM)" : "Check In"}
+                    resetOnCapture={true}
+                    autoCapture={true}
+                    isDarkMode={isDarkMode}
+                    currentUserDescriptor={
+                      currentUser?.face_descriptor || 
+                      currentUser?.face_encoding || 
+                      allRegisteredDescriptors.find(e => 
+                        (currentUser?.emp_id && String(e.emp_id).toLowerCase() === String(currentUser.emp_id).toLowerCase()) ||
+                        (currentUser?.email && String(e.email).toLowerCase() === String(currentUser.email).toLowerCase())
+                      )?.descriptor
+                    }
+                    currentUserName={currentUser?.name || currentUser?.full_name || 'Employee'}
+                    onFaceCaptured={(blob, descriptorArray) => handlePunchAttendance(blob, descriptorArray, false)} 
+                  />
+
+                  {hasCheckedIn && (
+                    <FaceScanModalCapture 
+                      title="Early Check-Out With Permission"
+                      description="Early Check-Out before 5:30 PM under approved permission or emergency leave."
+                      buttonText="Early Check-Out (With Permission) ⏱️"
+                      resetOnCapture={true}
+                      autoCapture={true}
+                      isDarkMode={isDarkMode}
+                      currentUserDescriptor={
+                        currentUser?.face_descriptor || 
+                        currentUser?.face_encoding || 
+                        allRegisteredDescriptors.find(e => 
+                          (currentUser?.emp_id && String(e.emp_id).toLowerCase() === String(currentUser.emp_id).toLowerCase()) ||
+                          (currentUser?.email && String(e.email).toLowerCase() === String(currentUser.email).toLowerCase())
+                        )?.descriptor
+                      }
+                      currentUserName={currentUser?.name || currentUser?.full_name || 'Employee'}
+                      onFaceCaptured={(blob, descriptorArray) => handlePunchAttendance(blob, descriptorArray, true)} 
+                    />
+                  )}
+                </div>
               ) : (
                 <div style={{
                   width: '100%',
