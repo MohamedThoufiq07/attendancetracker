@@ -84,23 +84,32 @@ def get_tokens_for_employee(employee):
         }
 
 def get_valid_employee_descriptor(emp):
-    """Returns valid 128-d face descriptor for emp, repairing dummy zero vectors if needed."""
+    """Returns valid 128-d face descriptor for emp, repairing dummy zero vectors or stringified JSON if needed."""
     if not emp:
         return None
     stored = emp.face_encoding
-    if stored and isinstance(stored, (list, tuple)) and len(stored) == 128:
-        if any(abs(x) > 1e-4 for x in stored):
-            return stored
+    if stored:
+        if isinstance(stored, str):
+            import json
+            try:
+                parsed = json.loads(stored)
+                if isinstance(parsed, (list, tuple)) and len(parsed) == 128:
+                    stored = [float(x) for x in parsed]
+            except Exception:
+                pass
+        if isinstance(stored, (list, tuple)) and len(stored) == 128:
+            if any(abs(float(x)) > 1e-4 for x in stored):
+                return [float(x) for x in stored]
 
     if emp.profile_photo:
         try:
             pil_image = Image.open(emp.profile_photo).convert('RGB')
             image_np = np.array(pil_image)
             re_encoding = compute_face_encoding(image_np)
-            if re_encoding and len(re_encoding) == 128 and any(abs(x) > 1e-4 for x in re_encoding):
-                emp.face_encoding = re_encoding
+            if re_encoding and len(re_encoding) == 128 and any(abs(float(x)) > 1e-4 for x in re_encoding):
+                emp.face_encoding = [float(x) for x in re_encoding]
                 emp.save(update_fields=['face_encoding'])
-                return re_encoding
+                return emp.face_encoding
         except Exception:
             pass
 

@@ -747,9 +747,20 @@ export default function AttendanceCheckIn() {
 
     } catch (err) {
       const isFetchError = err.message === 'Failed to fetch' || err.name === 'TypeError';
+      const isPunchRuleNotice = err.message && (
+        err.message.includes('already recorded') || 
+        err.message.includes('Check-Out') || 
+        err.message.includes('Check-In') ||
+        err.message.includes('5:30 PM')
+      );
+      
       setNotificationModal({
         type: 'error',
-        title: isFetchError ? 'Server Connection Error' : 'Face Verification Failed',
+        title: isFetchError 
+          ? 'Server Connection Error' 
+          : isPunchRuleNotice 
+          ? 'Attendance Punch Notice' 
+          : 'Face Verification Failed',
         message: isFetchError 
           ? 'Unable to reach backend server. Please verify server status or connection.' 
           : (err.message || 'Captured face does not match the registered employee photo.')
@@ -1822,7 +1833,14 @@ export default function AttendanceCheckIn() {
                   resetOnCapture={true}
                   autoCapture={true}
                   isDarkMode={isDarkMode}
-                  currentUserDescriptor={currentUser?.face_descriptor || currentUser?.face_encoding}
+                  currentUserDescriptor={
+                    currentUser?.face_descriptor || 
+                    currentUser?.face_encoding || 
+                    allRegisteredDescriptors.find(e => 
+                      (currentUser?.emp_id && String(e.emp_id).toLowerCase() === String(currentUser.emp_id).toLowerCase()) ||
+                      (currentUser?.email && String(e.email).toLowerCase() === String(currentUser.email).toLowerCase())
+                    )?.descriptor
+                  }
                   currentUserName={currentUser?.name || currentUser?.full_name || 'Employee'}
                   onFaceCaptured={(blob, descriptorArray) => handlePunchAttendance(blob, descriptorArray)} 
                 />
