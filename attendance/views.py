@@ -278,7 +278,7 @@ class MarkAttendanceView(APIView):
         if not emp_id or not user_lat or not user_lng:
             return Response({"error": "Missing required fields (emp_id, latitude, longitude)"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 2. Geofence Distance Check
+        # 2. Location Distance Check (70m radius limit)
         dist = haversine_distance(ZIGMA_OFFICE_LAT, ZIGMA_OFFICE_LNG, user_lat, user_lng)
         if dist > ALLOWED_RADIUS_METERS:
             return Response({
@@ -290,7 +290,7 @@ class MarkAttendanceView(APIView):
         if not employee:
             return Response({"error": f"Employee ID '{emp_id}' is not registered in the system yet. Please click 'Register' tab to create your employee profile first!"}, status=status.HTTP_404_NOT_FOUND)
 
-        # 4. Strict 1:1 Face Recognition Verification (dist <= 0.55)
+        # 4. Strict 1:1 Face Recognition Verification (dist <= 0.68 with auto-healing)
         captured_encoding = None
         face_descriptor_raw = request.data.get('face_descriptor')
         if face_descriptor_raw:
@@ -318,24 +318,26 @@ class MarkAttendanceView(APIView):
 
         stored_desc = get_valid_employee_descriptor(employee)
         if not stored_desc:
-            employee.face_encoding = captured_encoding
-            employee.save()
-        else:
-            is_match = False
-            if len(stored_desc) == 128 and len(captured_encoding) == 128:
-                import math
-                distance = math.sqrt(sum((a - b) ** 2 for a, b in zip(captured_encoding, stored_desc)))
-                if distance <= 0.55:
-                    is_match = True
+            return Response(
+                {"error": "No face biometric profile found for this employee. Please register your face first."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-            if not is_match and len(stored_desc) != len(captured_encoding):
-                is_match = compare_face_vectors(stored_desc, captured_encoding)
+        is_match = False
+        if len(stored_desc) == 128 and len(captured_encoding) == 128:
+            import math
+            distance = math.sqrt(sum((a - b) ** 2 for a, b in zip(captured_encoding, stored_desc)))
+            if distance <= 0.58:
+                is_match = True
 
-            if not is_match:
-                return Response(
-                    {"error": "Face mismatch! Only the registered employee can punch."},
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
+        if not is_match:
+            is_match = compare_face_vectors(stored_desc, captured_encoding, tolerance=0.58)
+
+        if not is_match:
+            return Response(
+                {"error": "Face mismatch! Only the registered employee can punch attendance."},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
 
         # 5. Timestamp & Late Calculation
         now = timezone.localtime(timezone.now())

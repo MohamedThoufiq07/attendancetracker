@@ -687,8 +687,6 @@ export default function AttendanceCheckIn() {
   };
 
   const handlePunchAttendance = async (capturedBlob, liveDescriptor = null) => {
-    setErrorBanner(null);
-
     if (!isWithinZone) {
       const distStr = distanceMeters ? (distanceMeters > 1000 ? `${(distanceMeters/1000).toFixed(1)} km` : `${Math.round(distanceMeters)} meters`) : '';
       setNotificationModal({
@@ -698,6 +696,8 @@ export default function AttendanceCheckIn() {
       });
       return;
     }
+
+
 
     if (!currentUser || !currentUser.emp_id) {
       setNotificationModal({
@@ -1695,7 +1695,7 @@ export default function AttendanceCheckIn() {
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <AlertTriangle style={{ width: '18px', height: '18px', color: '#EF4444', flexShrink: 0 }} />
-                      <span>Outside Office Geofence ({ALLOWED_RADIUS}m limit)</span>
+                      <span>Outside Office Location ({ALLOWED_RADIUS}m limit)</span>
                     </div>
                     {distanceMeters !== null ? (
                       <div style={{ fontSize: '11px', color: isDarkMode ? '#f87171' : '#DC2626', paddingLeft: '26px' }}>
@@ -1824,7 +1824,7 @@ export default function AttendanceCheckIn() {
 
 
 
-              {/* PUNCH ATTENDANCE TRIGGER BUTTON (CAMERA OPENS IN MODAL WITH BACKGROUND BLUR) */}
+              {/* PUNCH ATTENDANCE TRIGGER BUTTON */}
               {isWithinZone ? (
                 <FaceScanModalCapture 
                   title="Biometric Punch Verification"

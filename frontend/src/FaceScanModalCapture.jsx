@@ -280,6 +280,11 @@ export default function FaceScanModalCapture({
 
         const parseDescriptor = (raw) => {
           if (!raw) return null;
+          if (typeof raw === 'object' && !Array.isArray(raw)) {
+            if (raw.descriptor) raw = raw.descriptor;
+            else if (raw.face_descriptor) raw = raw.face_descriptor;
+            else if (raw.face_encoding) raw = raw.face_encoding;
+          }
           if (Array.isArray(raw) && raw.length === 128) return raw.map(Number);
           if (typeof raw === 'string') {
             try {
@@ -294,7 +299,17 @@ export default function FaceScanModalCapture({
           return null;
         };
 
-        const parsedUserDescriptor = parseDescriptor(currentUserDescriptor);
+        let parsedUserDescriptor = parseDescriptor(currentUserDescriptor);
+        if (!parsedUserDescriptor && allRegisteredDescriptors && allRegisteredDescriptors.length > 0) {
+          const empMatch = allRegisteredDescriptors.find(e => 
+            (currentUserName && e.full_name && String(e.full_name).toLowerCase() === String(currentUserName).toLowerCase()) ||
+            (e.emp_id && String(e.emp_id).toLowerCase() === String(currentUserName).toLowerCase())
+          );
+          if (empMatch) {
+            parsedUserDescriptor = parseDescriptor(empMatch.descriptor || empMatch.face_encoding || empMatch.face_descriptor);
+          }
+        }
+
         let liveDescriptor = det.descriptor ? Array.from(det.descriptor) : null;
         let isFaceMatched = true;
         let isDuplicateFace = false;
@@ -335,9 +350,11 @@ export default function FaceScanModalCapture({
               calculatedDistance = Math.sqrt(liveDescriptor.reduce((sum, val, idx) => sum + Math.pow(val - parsedUserDescriptor[idx], 2), 0));
             }
 
-            // Standard Euclidean distance threshold for 128D face recognition (<= 0.56 is match)
-            if (calculatedDistance > 0.56) {
+            // Strict Euclidean distance threshold for 128D face recognition (<= 0.58 is match)
+            if (calculatedDistance > 0.58) {
               isFaceMatched = false;
+            } else {
+              isFaceMatched = true;
             }
           } else {
             isFaceMatched = false;
